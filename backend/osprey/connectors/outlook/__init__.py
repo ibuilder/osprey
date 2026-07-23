@@ -147,3 +147,36 @@ class OutlookConnector(Connector):
             return Health(ok=True, detail="graph token acquired")
         except Exception as exc:  # noqa: BLE001
             return Health(ok=False, detail=str(exc))
+
+    supports_subscriptions = True
+
+    async def ensure_subscription(self, conn: ConnView, notify_url: str) -> str | None:
+        """Create/renew a Graph change-notification subscription (max ~3 days).
+
+        If the connection already holds a subscription id in its tokens, PATCH to
+        extend it; otherwise POST a new one. Renew well before ``expirationDateTime``.
+        """
+        from datetime import timedelta
+
+        token = await self._access_token(conn)
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        expiry = (utcnow() + timedelta(days=2, hours=23)).isoformat().replace("+00:00", "Z")
+        sub_id = conn.tokens.get("subscription_id")
+        async with httpx.AsyncClient(timeout=30, headers=headers) as client:
+            if sub_id:
+                resp = await client.patch(
+                    f"{GRAPH}/subscriptions/{sub_id}", json={"expirationDateTime": expiry}
+                )
+                if resp.status_code < 300:
+                    return sub_id
+            resp = await client.post(
+                f"{GRAPH}/subscriptions",
+                json={
+                    "changeType": "created,updated",
+                    "notificationUrl": notify_url,
+                    "resource": "me/mailFolders('inbox')/messages",
+                    "expirationDateTime": expiry,
+                },
+            )
+            resp.raise_for_status()
+            return resp.json().get("id")

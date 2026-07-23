@@ -80,3 +80,25 @@ async def run_scheduled_scripts(session: AsyncSession) -> dict:
     from ..scripts.service import run_due_scripts
 
     return await run_due_scripts(session)
+
+
+async def renew_subscriptions(session: AsyncSession, *, notify_base: str = "") -> dict:
+    """Create/renew provider webhook subscriptions before they lapse."""
+    rows = (
+        await session.execute(
+            select(Connection).where(Connection.status == ConnectionStatus.active)
+        )
+    ).scalars().all()
+    renewed = 0
+    for row in rows:
+        connector = get_connector(row.source_type)
+        if not getattr(connector, "supports_subscriptions", False):
+            continue
+        notify_url = f"{notify_base}/webhooks/{row.source_type}?connection_id={row.id}"
+        try:
+            sub_id = await connector.ensure_subscription(to_view(row), notify_url)
+            if sub_id:
+                renewed += 1
+        except Exception as exc:  # noqa: BLE001 - one source failing != system down
+            log.warning("subscription renewal failed for %s: %s", row.id, exc)
+    return {"checked": len(rows), "renewed": renewed}

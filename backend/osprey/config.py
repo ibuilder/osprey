@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     debug: bool = True
     log_level: str = "INFO"
     app_name: str = "Osprey"
+    public_base_url: str = ""          # external URL for webhook callbacks (subscriptions)
 
     # ---- Security -----------------------------------------------------------
     # Override BOTH of these in production. Defaults are intentionally insecure
@@ -75,6 +76,14 @@ class Settings(BaseSettings):
     # ---- Feature flags -------------------------------------------------------
     feature_ai_sift: bool = True
     feature_scripts: bool = True
+
+    # ---- Observability (OpenTelemetry; optional 'otel' extra) ----------------
+    otel_enabled: bool = False
+    otel_service_name: str = "osprey-api"
+    otel_exporter_otlp_endpoint: str = ""   # e.g. http://otel-collector:4317
+
+    # ---- Row-level security (Postgres tenant isolation) ----------------------
+    rls_enabled: bool = False               # requires the 0002 migration + a non-superuser DB role
 
     # ---- Push notifications --------------------------------------------------
     # "logging" (offline default) | "auto" (route by device platform to any

@@ -40,18 +40,24 @@ async def run_scripts(ctx: dict) -> dict:
         return await tasks.run_scheduled_scripts(session)
 
 
+async def renew_subscriptions(ctx: dict) -> dict:
+    async with session_scope() as session:
+        return await tasks.renew_subscriptions(session, notify_base=settings.public_base_url)
+
+
 async def startup(ctx: dict) -> None:
     configure_logging(settings.log_level)
     log.info("Osprey worker online (redis=%s)", settings.redis_url)
 
 
 class WorkerSettings:
-    functions = [poll_connection, refresh_project, poll_all, run_scripts]
+    functions = [poll_connection, refresh_project, poll_all, run_scripts, renew_subscriptions]
     on_startup = startup
-    # Poll every source every 5 minutes as the reliable backbone (webhooks add
-    # near-real-time on top); run due user scripts every minute.
+    # Poll every source every 5 min (webhooks add near-real-time on top); run due
+    # user scripts every minute; renew webhook subscriptions hourly before they lapse.
     cron_jobs = [
         cron(poll_all, minute=set(range(0, 60, 5))),
         cron(run_scripts, minute=set(range(0, 60))),
+        cron(renew_subscriptions, minute={7}),
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

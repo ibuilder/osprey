@@ -73,6 +73,11 @@ def create_app() -> FastAPI:
         ai, scripts, admin, devices, ws,
     ):
         app.include_router(module.router)
+
+    # Optional OpenTelemetry instrumentation (no-op unless enabled + installed).
+    from .observability import setup_observability
+
+    setup_observability(app)
     return app
 
 

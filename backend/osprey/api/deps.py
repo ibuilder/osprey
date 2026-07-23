@@ -12,10 +12,18 @@ from ..db import get_session
 from ..models import Membership, Project, Role
 from ..security import rbac
 from ..security.auth import Principal, decode_token
+from ..security.rls import set_current_org
 
 
-async def db_session() -> AsyncIterator[AsyncSession]:
+async def db_session(authorization: str = Header(default="")) -> AsyncIterator[AsyncSession]:
     async for s in get_session():
+        # Bind the tenant for Postgres row-level security (no-op on SQLite/disabled).
+        if authorization.lower().startswith("bearer "):
+            try:
+                principal = decode_token(authorization.split(" ", 1)[1].strip())
+                await set_current_org(s, principal.org_id)
+            except Exception:  # noqa: BLE001 - auth errors surface in the real guard
+                pass
         yield s
 
 

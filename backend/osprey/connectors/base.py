@@ -124,6 +124,17 @@ class Connector(ABC):
     async def healthcheck(self, conn: Connection) -> Health:
         return Health(ok=True)
 
+    # -- Webhook subscription lifecycle -------------------------------------- #
+    supports_subscriptions: bool = False
+
+    async def ensure_subscription(self, conn: Connection, notify_url: str) -> str | None:
+        """Create or renew a provider webhook subscription; return its id/expiry.
+
+        Subscriptions (e.g. MS Graph) expire and must be renewed before lapse. The
+        default is a no-op for sources without subscriptions (filedrop, procore-poll).
+        """
+        return None
+
 
 class _Registry:
     def __init__(self) -> None:
