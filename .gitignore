@@ -18,6 +18,8 @@ htmlcov/
 *.db
 *.sqlite3
 osprey.db*
+osprey-demo.db*
+demo/
 /exports_tmp/
 
 # OS / editors

@@ -56,6 +56,23 @@ uvicorn osprey.main:app --reload                     # http://localhost:8000/doc
 The app boots against **SQLite by default** so it runs with zero infrastructure.
 Point `OSPREY_DATABASE_URL` at Postgres (with pgvector) for production.
 
+### See it work in one command
+
+```bash
+cd backend && python -m osprey.seed
+```
+
+Loads a realistic Tower B project across Outlook / Procore / Gmail / Calendar, runs
+the full pipeline, and writes `demo/hotlist.xlsx` + `demo/hotlist.pdf`. Sample output:
+
+```
+  1. [ACT TODAY] [83] NOTICE OF DELAY — differing site conditions - $180,000
+  2. [ACT TODAY] [74] Safety observation — missing fall protection at level 3
+  3. [THIS WEEK] [64] PCO-088 — slab thickening at loading dock - $45,000
+  4. [THIS WEEK] [54] RFI-0500 — curtain wall anchor spacing at grid C-4
+  ...
+```
+
 ## Self-host (Docker)
 
 ```bash

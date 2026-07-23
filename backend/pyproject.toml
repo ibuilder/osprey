@@ -26,6 +26,9 @@ dependencies = [
     "python-multipart>=0.0.9",
 ]
 
+[project.scripts]
+osprey-seed = "osprey.seed:main"
+
 [project.optional-dependencies]
 # Production extras — not needed to run the test suite.
 prod = [
