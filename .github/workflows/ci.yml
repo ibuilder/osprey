@@ -38,12 +38,9 @@ jobs:
           format: spdx-json
           output-file: osprey-sbom.spdx.json
       - name: Vulnerability scan (Trivy)
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          scan-type: fs
-          scan-ref: ./backend
-          severity: HIGH,CRITICAL
-          exit-code: "0"   # report, don't block, until baseline is clean
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy fs --severity HIGH,CRITICAL --exit-code 0 ./backend   # report, don't block
       - uses: actions/upload-artifact@v4
         with:
           name: sbom
