@@ -53,6 +53,30 @@ npm run tauri icon ../../osprey-brand/logo/osprey-icon.png
 
 This emits `32x32.png`, `128x128.png`, `icon.icns`, `icon.ico`, and `tray.png`.
 
+## Releasing (signed bundles + auto-update)
+
+Push a `v*` tag and `.github/workflows/release.yml` builds signed bundles for
+win/mac/linux via `tauri-action` and drafts a GitHub Release. Auto-update is wired:
+`bundle.createUpdaterArtifacts` + `plugins.updater` (public key embedded in
+`tauri.conf.json`) let the app verify and install updates from the latest release.
+
+The **updater signing keypair** is required by CI. It is stored as repo secrets
+(already set for this repo):
+
+```bash
+# Generate a keypair (once) — keep the private key OFF the repo:
+npm run tauri signer generate -w osprey_updater.key -p ""
+
+# Register it with GitHub Actions:
+gh secret set TAURI_SIGNING_PRIVATE_KEY < osprey_updater.key
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --body ""   # empty if no password
+```
+
+The **public** key lives in `tauri.conf.json` → `plugins.updater.pubkey`. If you lose
+the private key you must generate a new pair and re-embed the new public key (old
+installs won't accept updates signed by a new key). For macOS notarization also set
+`APPLE_*` secrets (see the workflow).
+
 ## Mobile (iOS / Android)
 
 Tauri 2 builds the **same** project for mobile — the app is a **viewer + push**
