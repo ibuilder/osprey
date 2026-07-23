@@ -1,19 +1,62 @@
 # Osprey
 
 > **The foreman that never sleeps.**
-> Open-source, self-hostable background agent that watches every source on a construction / real-estate project and surfaces the one thing to act on now.
 
-[![CI](https://github.com/ospreyhq/osprey/actions/workflows/ci.yml/badge.svg)](https://github.com/ospreyhq/osprey/actions/workflows/ci.yml)
+[![CI](https://github.com/ibuilder/osprey/actions/workflows/ci.yml/badge.svg)](https://github.com/ibuilder/osprey/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-0E1A2B.svg)](LICENSE)
+&nbsp;·&nbsp; [**Website**](https://ibuilder.github.io/osprey/)
 
-Osprey connects to the email accounts and platforms a construction/RE team already
-uses (Outlook, Gmail, Procore, calendars, file drops), continuously ingests everything,
-and produces a single **prioritized hotlist** of what the project needs to handle right
-now — with the *why*, the source link, the dollar/schedule exposure, and a recommended
-next action. Exportable to Excel and PDF.
+Every project buries the thing that matters under a thousand emails, RFIs, submittals,
+change orders, invoices, and calendar invites — spread across systems that don't talk
+to each other. **Osprey watches all of them at once and hands you the five things that
+actually need you today** — with the reason why, the dollars and schedule at stake, the
+deadline, the source, and the recommended next move.
 
-This repository is the **backend brain** — the always-on service described in
-[`SPEC.md`](SPEC.md) §2. The clients (Tauri desktop/mobile) are tracked separately.
+It's **free, open source, and runs on your own server**, so your project data never
+leaves your control. No seat licenses. No vendor lock-in.
+
+### What you get
+
+- **One prioritized hotlist** across all your sources — Outlook, Gmail, Procore,
+  calendars, and a catch-all *forward-an-email / drop-a-CSV* fallback for everything else.
+- **Every item explains itself** — why it ranked where it did, the $ exposure, the
+  deadline, links back to the source, and a concrete next action. No black box.
+- **Contract notice deadlines weighted highest** — miss one and you can waive a claim
+  worth more than the whole fee. Osprey is built to never let that happen quietly.
+- **🔴 Act today / 🟠 This week / 🟡 Watch** buckets, and one-click **Excel + PDF export**
+  for your OAC meeting.
+- **Ask your own AI** to sift the project ("flag anything about liquidated damages") and
+  push what it finds straight onto the hotlist — using *your* Claude/OpenAI key.
+- **Private by design** — self-hosted; least-privilege, read-only access to your accounts;
+  tokens encrypted; nothing routed through a third party.
+
+### See it work in 30 seconds
+
+```bash
+cd backend && python -m osprey.seed
+```
+
+```
+  Tower B — 8 items, $279,000 exposure
+
+  1. [ACT TODAY] [83] NOTICE OF DELAY — differing site conditions   - $180,000
+  2. [ACT TODAY] [74] Safety observation — missing fall protection at level 3
+  3. [THIS WEEK] [64] PCO-088 — slab thickening at loading dock     - $45,000
+  4. [THIS WEEK] [54] RFI-0500 — curtain wall anchor spacing at grid C-4
+  5. [THIS WEEK] [51] Pay Application 07 — retention release         - $54,000
+  ...                                            → demo/hotlist.xlsx · demo/hotlist.pdf
+```
+
+### The two pieces
+
+- **The brain** (this repo, `backend/`) — the always-on service that does the watching,
+  ranking, and exporting. Runs on a small server or a spare machine, or fully local.
+- **The apps** (`clients/`) — a desktop app (system-tray, live hotlist, connect your
+  accounts) and a mobile viewer. You read and act; the brain never sleeps.
+
+> **Heads up:** Osprey is self-hosted, so first-time setup is a one-time IT step (or a
+> tech-savvy PM following the [setup guide](docs/connecting.md)). After that, connecting
+> an account is point-and-click in the desktop app.
 
 ---
 
@@ -38,7 +81,7 @@ This repository is the **backend brain** — the always-on service described in
 | **Push**: device registration + APNs/FCM/Web-Push sender abstraction | ✅ |
 | Admin console (connection health · audit verify · stats · feature flags) | ✅ |
 | **Tauri 2.0 desktop client** (tray · live hotlist · connect · AI · scripts) + **mobile viewer** scaffold | ✅ |
-| Test suite (pytest, 49 tests, runs on SQLite, no external services) | ✅ |
+| Test suite (pytest, 66 tests incl. connector poll-loop integration, runs on SQLite) | ✅ |
 | docker-compose + **Helm chart** (api · worker · migrations · ingress) | ✅ |
 | CI (ruff · mypy · pytest · SBOM · Trivy) | ✅ |
 
@@ -53,25 +96,9 @@ pytest -q                                            # full suite, offline
 uvicorn osprey.main:app --reload                     # http://localhost:8000/docs
 ```
 
-The app boots against **SQLite by default** so it runs with zero infrastructure.
-Point `OSPREY_DATABASE_URL` at Postgres (with pgvector) for production.
-
-### See it work in one command
-
-```bash
-cd backend && python -m osprey.seed
-```
-
-Loads a realistic Tower B project across Outlook / Procore / Gmail / Calendar, runs
-the full pipeline, and writes `demo/hotlist.xlsx` + `demo/hotlist.pdf`. Sample output:
-
-```
-  1. [ACT TODAY] [83] NOTICE OF DELAY — differing site conditions - $180,000
-  2. [ACT TODAY] [74] Safety observation — missing fall protection at level 3
-  3. [THIS WEEK] [64] PCO-088 — slab thickening at loading dock - $45,000
-  4. [THIS WEEK] [54] RFI-0500 — curtain wall anchor spacing at grid C-4
-  ...
-```
+The app boots against **SQLite by default** so it runs with zero infrastructure
+(try `python -m osprey.seed` — see the demo above). Point `OSPREY_DATABASE_URL` at
+Postgres (with pgvector) for production.
 
 ## Self-host (Docker)
 

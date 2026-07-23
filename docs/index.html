@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Osprey — the foreman that never sleeps</title>
+<meta name="description" content="Free, open-source, self-hosted agent that watches every source on a construction project and hands you the five things that actually matter today." />
+<style>
+  :root{
+    --ink:#0E1A2B; --ember:#FF6A2B; --sky:#3E7CB1; --mist:#F6F7F9;
+    --line:#E4E7EC; --muted:#667085; --white:#fff;
+    --red:#E5484D; --amber:#F5A623; --yellow:#EAB308; --green:#30A46C;
+    --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--white);line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--ember);text-decoration:none}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+  .btn{display:inline-block;padding:12px 22px;border-radius:10px;font-weight:600;border:1px solid transparent}
+  .btn.primary{background:var(--ember);color:#fff}
+  .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.25)}
+  .btn.dark{background:var(--ink);color:#fff}
+
+  /* Hero */
+  header.hero{background:var(--ink);color:#fff;padding:64px 0 72px}
+  .nav{display:flex;align-items:center;gap:14px;margin-bottom:56px}
+  .nav .mark{width:34px;height:34px}
+  .nav .name{font-weight:700;letter-spacing:-.3px;font-size:20px}
+  .nav .spacer{flex:1}
+  .nav a{color:#cdd5e0;font-size:14px;margin-left:18px}
+  .hero h1{font-size:clamp(34px,6vw,60px);line-height:1.05;letter-spacing:-1.2px;margin:0 0 18px;font-weight:700}
+  .hero h1 .em{color:var(--ember)}
+  .hero p.lead{font-size:clamp(17px,2.4vw,21px);color:#c7d0dc;max-width:660px;margin:0 0 30px}
+  .cta{display:flex;gap:12px;flex-wrap:wrap}
+  .tag{display:inline-block;font-family:var(--mono);font-size:12px;color:var(--ember);border:1px solid rgba(255,106,43,.4);border-radius:999px;padding:5px 12px;margin-bottom:22px;letter-spacing:.4px}
+
+  /* Sections */
+  section{padding:64px 0}
+  h2{font-size:clamp(24px,3.5vw,34px);letter-spacing:-.6px;margin:0 0 10px}
+  .sub{color:var(--muted);max-width:640px;margin:0 0 34px}
+
+  /* Hotlist mock */
+  .hotlist{background:var(--mist);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 20px 50px -30px rgba(14,26,43,.5)}
+  .hl-head{display:flex;align-items:center;gap:12px;padding:4px 6px 14px;color:var(--muted);font-size:13px}
+  .hl-head b{color:var(--ink)}
+  .row{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-left-width:5px;border-radius:10px;padding:12px 14px;margin-bottom:8px}
+  .row.r-red{border-left-color:var(--red)} .row.r-amber{border-left-color:var(--amber)} .row.r-yellow{border-left-color:var(--yellow)}
+  .row .score{font-family:var(--mono);font-weight:700;width:34px;text-align:center}
+  .row .what{font-weight:600;flex:1;min-width:0}
+  .row .what small{display:block;font-weight:400;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pill{font-family:var(--mono);font-size:11px;font-weight:600;color:#fff;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:var(--red)} .p-amber{background:var(--amber)} .p-yellow{background:var(--yellow)}
+  .exp{font-family:var(--mono);font-size:13px;color:var(--ink);white-space:nowrap}
+
+  /* Features */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+  .card{border:1px solid var(--line);border-radius:14px;padding:22px;background:#fff}
+  .card h3{margin:0 0 8px;font-size:18px}
+  .card p{margin:0;color:var(--muted);font-size:14.5px}
+  .card .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;margin-bottom:12px;background:var(--mist)}
+
+  /* Steps */
+  .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;counter-reset:s}
+  .step{position:relative;padding:22px;border:1px solid var(--line);border-radius:14px}
+  .step:before{counter-increment:s;content:counter(s);position:absolute;top:-14px;left:20px;width:28px;height:28px;background:var(--ember);color:#fff;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px}
+  .step h3{margin:6px 0 6px;font-size:16px}
+  .step p{margin:0;color:var(--muted);font-size:14px}
+
+  pre{background:var(--ink);color:#e7edf4;border-radius:12px;padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.6}
+  pre .c{color:#7f8ea3} pre .g{color:#7fd1a3} pre .o{color:var(--ember)}
+  .banner{background:linear-gradient(120deg,var(--ink),#16324f);color:#fff;border-radius:18px;padding:40px;text-align:center}
+  .banner h2{color:#fff} .banner p{color:#c7d0dc;max-width:560px;margin:0 auto 22px}
+  footer{border-top:1px solid var(--line);padding:34px 0;color:var(--muted);font-size:13px}
+  footer .mono{font-family:var(--mono)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:720px){.two{grid-template-columns:1fr}.nav a:not(.gh){display:none}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <g id="osprey-mark">
+    <polyline points="18,58 41,37 64,47 87,37 110,58" fill="none" stroke="currentColor" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M64 37 L57 50 L71 50 Z" fill="currentColor"/>
+    <path d="M64 48 L56.5 62 L64 96 L71.5 62 Z" fill="#FF6A2B"/>
+  </g>
+</defs></svg>
+
+<header class="hero">
+  <div class="wrap">
+    <nav class="nav">
+      <svg class="mark" viewBox="0 0 128 128" style="color:#fff"><use href="#osprey-mark"/></svg>
+      <span class="name">Osprey</span>
+      <span class="spacer"></span>
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="https://github.com/ibuilder/osprey" class="gh">GitHub ↗</a>
+    </nav>
+    <span class="tag">CONSTRUCTION · REAL ESTATE · OPEN SOURCE</span>
+    <h1>The foreman that<br>never <span class="em">sleeps.</span></h1>
+    <p class="lead">Osprey watches every email, RFI, submittal, change order, invoice, and
+      deadline across all the systems your project already uses — and hands you the five
+      things that actually matter <em>today</em>.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/ibuilder/osprey">Get it on GitHub</a>
+      <a class="btn ghost" href="#how">See how it works</a>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>Five things need your attention on Tower B today.</h2>
+    <p class="sub">One prioritized hotlist across all your sources. Every item shows why it
+      ranked, the dollars at stake, the deadline, and what to do next.</p>
+    <div class="hotlist">
+      <div class="hl-head"><b>Tower&nbsp;B</b> · 8 items · $279,000 exposure · <span style="color:var(--green)">live</span></div>
+      <div class="row r-red"><span class="score">83</span><span class="pill p-red">ACT TODAY</span><span class="what">NOTICE OF DELAY — differing site conditions<small>Contractual notice · respond within 7 days or the claim may be waived</small></span><span class="exp">$180,000</span></div>
+      <div class="row r-red"><span class="score">74</span><span class="pill p-red">ACT TODAY</span><span class="what">Safety observation — missing fall protection at level 3<small>Safety · immediate correction required</small></span><span class="exp">—</span></div>
+      <div class="row r-amber"><span class="score">64</span><span class="pill p-amber">THIS WEEK</span><span class="what">PCO-088 — slab thickening at loading dock<small>Change order · price and issue</small></span><span class="exp">$45,000</span></div>
+      <div class="row r-amber"><span class="score">54</span><span class="pill p-amber">THIS WEEK</span><span class="what">RFI-0500 — curtain wall anchor spacing at grid C-4<small>RFI · blocks fabrication release</small></span><span class="exp">—</span></div>
+      <div class="row r-yellow"><span class="score">30</span><span class="pill p-yellow">WATCH</span><span class="what">Two-week look-ahead — steel delivery slipping<small>Schedule · may affect critical path</small></span><span class="exp">—</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="features" style="background:var(--mist)">
+  <div class="wrap">
+    <h2>Built by the physics of a real project.</h2>
+    <p class="sub">Not another dashboard. A watchful agent tuned to how construction and
+      real-estate risk actually works.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">🎯</div><h3>Explainable, never a black box</h3><p>Every item shows its factor breakdown, the source text it's based on, and a recommended next action.</p></div>
+      <div class="card"><div class="ic">⚖️</div><h3>Notice deadlines weighted highest</h3><p>Miss a contractual notice and you can waive a claim worth more than the fee. Osprey won't let that slip by quietly.</p></div>
+      <div class="card"><div class="ic">🔌</div><h3>All your sources, one list</h3><p>Outlook, Gmail, Procore, calendars — plus a forward-an-email / drop-a-CSV fallback for everything else.</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>Private &amp; self-hosted</h3><p>Runs on your own server. Read-only access, encrypted tokens, nothing routed through a third party.</p></div>
+      <div class="card"><div class="ic">🤖</div><h3>Bring your own AI</h3><p>Point your own Claude or OpenAI key at the project and ask it, in plain English, to sift and push findings to the hotlist.</p></div>
+      <div class="card"><div class="ic">📄</div><h3>Excel &amp; PDF in one click</h3><p>Print-ready hotlists for your OAC meeting, generated from the same snapshot so they always agree.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="sub">You connect your accounts once, in your own browser. Osprey does the rest, around the clock.</p>
+    <div class="steps">
+      <div class="step"><h3>Connect</h3><p>Authorize each source in your browser — read-only. Tokens are sealed on your server, never shared.</p></div>
+      <div class="step"><h3>Watch</h3><p>The always-on brain ingests everything, clusters duplicates across sources, and scores what matters.</p></div>
+      <div class="step"><h3>Prioritize</h3><p>A single ranked hotlist — Act today / This week / Watch — with the why, the dollars, and the deadline.</p></div>
+      <div class="step"><h3>Act</h3><p>Read it in the desktop app or on your phone, export to Excel/PDF, and get a push when something turns critical.</p></div>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--mist)">
+  <div class="wrap two">
+    <div>
+      <h2>See it in 30 seconds</h2>
+      <p class="sub">Runs offline with zero setup — no accounts, no keys. It loads a realistic
+        project and produces a real hotlist plus Excel &amp; PDF exports.</p>
+      <pre><span class="c"># clone, then:</span>
+cd backend
+python -m osprey.<span class="o">seed</span></pre>
+    </div>
+    <div>
+      <pre>  Tower B — 8 items, $279,000 exposure
+
+  <span class="o">1.</span> [ACT TODAY] [83] NOTICE OF DELAY        <span class="g">$180,000</span>
+  <span class="o">2.</span> [ACT TODAY] [74] Fall protection missing
+  <span class="o">3.</span> [THIS WEEK] [64] PCO-088 slab thickening <span class="g">$45,000</span>
+  <span class="o">4.</span> [THIS WEEK] [54] RFI-0500 anchor spacing
+  <span class="o">5.</span> [THIS WEEK] [51] Pay Application 07      <span class="g">$54,000</span>
+
+  → demo/hotlist.xlsx · demo/hotlist.pdf</pre>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="banner">
+      <h2>Free forever. Yours to run.</h2>
+      <p>Open-source under AGPL-3.0. No seat licenses, no lock-in, no data leaving your
+        organization. Self-host it, extend it, own it.</p>
+      <a class="btn primary" href="https://github.com/ibuilder/osprey">Star it on GitHub</a>
+      <a class="btn ghost" href="https://github.com/ibuilder/osprey/blob/main/docs/connecting.md">Setup guide</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <svg class="mark" width="24" height="24" viewBox="0 0 128 128" style="color:var(--ink)"><use href="#osprey-mark"/></svg>
+    <span><b>Osprey</b> — the foreman that never sleeps.</span>
+    <span style="flex:1"></span>
+    <span class="mono">Ink #0E1A2B · Ember #FF6A2B · AGPL-3.0</span>
+  </div>
+</footer>
+
+</body>
+</html>
