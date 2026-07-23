@@ -1,0 +1,56 @@
+# Osprey Helm values. Bring your own Postgres (with pgvector) and Redis, or set
+# their URLs to managed services. Secrets should come from a real secret store.
+
+image:
+  repository: ghcr.io/ospreyhq/osprey
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicaCount:
+  api: 2
+  worker: 1
+
+# Non-secret config -> ConfigMap (OSPREY_* env).
+config:
+  env: prod
+  logLevel: INFO
+  aiProvider: deterministic          # deterministic | claude | ollama
+  hotlistTopN: "25"
+  featureAiSift: "true"
+  featureScripts: "true"
+
+# Secrets -> Secret (override via --set-string or a sealed/external secret).
+secrets:
+  secretKey: ""                      # OSPREY_SECRET_KEY (JWT signing)
+  encryptionKey: ""                  # OSPREY_ENCRYPTION_KEY (token vault)
+  webhookHmacSecret: ""              # OSPREY_WEBHOOK_HMAC_SECRET
+  databaseUrl: "postgresql+asyncpg://osprey:osprey@osprey-postgres:5432/osprey"
+  redisUrl: "redis://osprey-redis:6379/0"
+  anthropicApiKey: ""
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+  className: nginx
+  host: osprey.example.com
+  tls: true
+  annotations: {}
+
+resources:
+  api:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+  worker:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+migrations:
+  enabled: true                      # run `alembic upgrade head` as a pre-install/upgrade hook
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  seccompProfile: { type: RuntimeDefault }

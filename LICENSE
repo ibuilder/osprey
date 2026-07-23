@@ -1,0 +1,27 @@
+Osprey — core
+
+Copyright (C) 2026 Osprey contributors <https://github.com/ospreyhq>
+
+SPDX-License-Identifier: AGPL-3.0-only
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, version 3 of the License.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along
+with this program. If not, see <https://www.gnu.org/licenses/agpl-3.0.txt>.
+
+------------------------------------------------------------------------------
+The full text of the GNU Affero General Public License v3.0 governs this
+software. For CI/redistribution, fetch the canonical text once and commit it
+verbatim in place of this notice:
+
+    curl -sL https://www.gnu.org/licenses/agpl-3.0.txt -o LICENSE
+
+The connector SDK (`connectors-sdk/`) and generated client libraries are made
+available under Apache-2.0 / MIT so integrators may build against Osprey freely.
+------------------------------------------------------------------------------

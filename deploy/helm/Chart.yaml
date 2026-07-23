@@ -1,0 +1,11 @@
+apiVersion: v2
+name: osprey
+description: Osprey — self-hostable construction/RE hotlist agent (API + worker)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/ospreyhq/osprey
+sources:
+  - https://github.com/ospreyhq/osprey
+maintainers:
+  - name: Osprey contributors

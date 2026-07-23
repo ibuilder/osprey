@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: ruff check osprey tests
+      - name: Types (mypy)
+        run: mypy osprey || true   # advisory until fully annotated
+      - name: Test (pytest)
+        run: pytest -q
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./backend
+          format: spdx-json
+          output-file: osprey-sbom.spdx.json
+      - name: Vulnerability scan (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: ./backend
+          severity: HIGH,CRITICAL
+          exit-code: "0"   # report, don't block, until baseline is clean
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: osprey-sbom.spdx.json

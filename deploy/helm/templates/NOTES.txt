@@ -1,0 +1,15 @@
+Osprey {{ .Chart.AppVersion }} deployed as {{ include "osprey.fullname" . }}.
+
+API service:  {{ include "osprey.fullname" . }}-api:{{ .Values.service.port }}
+{{- if .Values.ingress.enabled }}
+URL:          https://{{ .Values.ingress.host }}
+{{- else }}
+Port-forward: kubectl port-forward svc/{{ include "osprey.fullname" . }}-api {{ .Values.service.port }}:{{ .Values.service.port }}
+{{- end }}
+
+BEFORE PRODUCTION — set real secrets (do not ship the defaults):
+  --set-string secrets.secretKey=$(openssl rand -base64 48) \
+  --set-string secrets.encryptionKey=$(python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())") \
+  --set-string secrets.webhookHmacSecret=$(openssl rand -base64 32)
+
+Health:  GET /health   Ready: GET /ready   Docs: GET /docs

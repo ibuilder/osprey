@@ -1,0 +1,60 @@
+/* Osprey brand tokens (BRAND.md) */
+:root {
+  --ink: #0e1a2b;
+  --ember: #ff6a2b;
+  --sky: #3e7cb1;
+  --mist: #f6f7f9;
+  --line: #e4e7ec;
+  --muted: #667085;
+  --white: #fff;
+  --prio-red: #e5484d;
+  --prio-amber: #f5a623;
+  --prio-yellow: #eab308;
+  --prio-green: #30a46c;
+  --font: "Inter", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font); background: var(--mist); color: var(--ink); }
+button { font-family: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); padding: 8px 14px; background: var(--white); }
+button.primary { background: var(--ember); border-color: var(--ember); color: var(--white); font-weight: 600; }
+button:disabled { opacity: 0.5; cursor: default; }
+input, textarea, select { font-family: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; width: 100%; }
+a { color: var(--ember); }
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+.topbar { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--ink); color: var(--white); }
+.topbar .brand { font-weight: 700; letter-spacing: -0.3px; }
+.topbar select { width: auto; background: rgba(255,255,255,0.1); color: var(--white); border-color: rgba(255,255,255,0.2); }
+.tabs { display: flex; gap: 4px; margin-left: auto; }
+.tabs button { background: transparent; color: var(--white); border-color: transparent; }
+.tabs button.active { background: rgba(255,255,255,0.14); }
+
+.body { flex: 1; overflow: auto; padding: 20px; }
+.card { background: var(--white); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+.row { display: flex; gap: 12px; align-items: center; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); font-size: 13px; }
+.mono { font-family: var(--mono); }
+
+.buckets { display: flex; gap: 10px; margin-bottom: 16px; }
+.bucket { flex: 1; border-radius: 10px; padding: 12px; color: var(--white); }
+.bucket.act_today { background: var(--prio-red); }
+.bucket.this_week { background: var(--prio-amber); }
+.bucket.watch { background: var(--prio-yellow); }
+.bucket .n { font-size: 26px; font-weight: 700; }
+
+.item { border-left: 5px solid var(--line); }
+.item.act_today { border-left-color: var(--prio-red); }
+.item.this_week { border-left-color: var(--prio-amber); }
+.item.watch { border-left-color: var(--prio-yellow); }
+.item .what { font-weight: 600; font-size: 15px; }
+.item .why { color: var(--muted); font-size: 13px; margin: 4px 0; }
+.pill { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--mist); border: 1px solid var(--line); }
+.score { font-family: var(--mono); font-weight: 700; }
+
+.login { max-width: 380px; margin: 12vh auto; }
+.login .card > * { margin-bottom: 10px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.notice { color: var(--prio-red); font-weight: 600; }
+textarea.code { font-family: var(--mono); min-height: 160px; }

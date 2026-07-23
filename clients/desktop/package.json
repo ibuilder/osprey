@@ -1,0 +1,30 @@
+{
+  "name": "@ospreyhq/desktop",
+  "version": "0.1.0",
+  "description": "Osprey desktop client — tray, live hotlist, connections manager (Tauri 2.0).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "icons": "node scripts/gen-icons.mjs && tauri icon src-tauri/icons-src/icon.png -o src-tauri/icons"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.51.0",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-shell": "^2.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "sharp": "^0.32.6",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4"
+  }
+}
