@@ -36,6 +36,20 @@ export interface Hotlist {
   items: HotlistItem[];
 }
 
+export interface ItemDetail {
+  id: string;
+  title: string;
+  category: string;
+  summary: string;
+  status: string;
+  owner: string | null;
+  score: number | null;
+  bucket: string | null;
+  explanation: string;
+  factors: Record<string, any>;
+  signals: { id: string; source_type: string; source_kind: string; title: string; url: string | null; occurred_at: string | null }[];
+}
+
 export class Api {
   constructor(private session: Session) {}
 
@@ -84,6 +98,7 @@ export class Api {
 
   hotlist = (projectId: string, refresh = false) =>
     this.req<Hotlist>(`/projects/${projectId}/hotlist${refresh ? "?refresh=true" : ""}`);
+  item = (itemId: string) => this.req<ItemDetail>(`/items/${itemId}`);
   refresh = (projectId: string) =>
     this.req<Hotlist>(`/projects/${projectId}/hotlist/refresh`, { method: "POST" });
   act = (itemId: string, type: string) =>

@@ -108,13 +108,19 @@ function Main({ session, onLogout }: { session: Session; onLogout: () => void })
   );
 }
 
+const BUCKETS = ["act_today", "this_week", "watch"] as const;
+
 function HotlistView({ api, projectId }: { api: Api; projectId: string }) {
   const [hot, setHot] = useState<Hotlist | null>(null);
+  const [bucket, setBucket] = useState<string>("");
+  const [category, setCategory] = useState<string>("");
+  const [query, setQuery] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     api.hotlist(projectId, false).then(setHot).catch(() => {});
-    const ws = api.openHotlistSocket(projectId, setHot); // live updates
+    const ws = api.openHotlistSocket(projectId, setHot);
     wsRef.current = ws;
     return () => ws.close();
   }, [projectId]);
@@ -130,12 +136,38 @@ function HotlistView({ api, projectId }: { api: Api; projectId: string }) {
     a.click();
   }
 
+  async function act(itemId: string, type: string) {
+    await api.act(itemId, type);
+    setOpenId(null);
+    setHot(await api.refresh(projectId));
+  }
+
   if (!hot) return <div className="muted">Loading…</div>;
+  if (hot.item_count === 0) {
+    return (
+      <div className="empty">
+        <div className="empty-mark">🜲</div>
+        <h3>Nothing on the hotlist yet</h3>
+        <p className="muted">Connect a source (Connections tab) or forward an email, then hit Refresh.
+          Osprey will start surfacing what needs you.</p>
+        <button className="primary" onClick={() => api.refresh(projectId).then(setHot)}>Refresh</button>
+      </div>
+    );
+  }
+
+  const categories = Array.from(new Set(hot.items.map((i) => i.category))).sort();
+  const items = hot.items.filter((it) => {
+    if (bucket && it.bucket !== bucket) return false;
+    if (category && it.category !== category) return false;
+    if (query && !`${it.what} ${it.why} ${it.recommended_action}`.toLowerCase().includes(query.toLowerCase())) return false;
+    return true;
+  });
+
   return (
     <div>
       <div className="row" style={{ marginBottom: 12 }}>
         <div className="muted">
-          {hot.item_count} items · ${Math.round(hot.total_exposure).toLocaleString()} exposure · live
+          {hot.item_count} items · ${Math.round(hot.total_exposure).toLocaleString()} exposure · <span style={{ color: "var(--prio-green)" }}>live</span>
         </div>
         <div className="spacer" />
         <button onClick={() => api.refresh(projectId).then(setHot)}>Refresh</button>
@@ -143,15 +175,32 @@ function HotlistView({ api, projectId }: { api: Api; projectId: string }) {
         <button onClick={() => download("pdf")}>PDF</button>
       </div>
       <div className="buckets">
-        {(["act_today", "this_week", "watch"] as const).map((b) => (
-          <div key={b} className={`bucket ${b}`}>
+        {BUCKETS.map((b) => (
+          <div
+            key={b}
+            className={`bucket ${b} ${bucket && bucket !== b ? "dim" : ""}`}
+            onClick={() => setBucket(bucket === b ? "" : b)}
+            title="Click to filter"
+          >
             <div className="n">{hot.buckets[b]?.count ?? 0}</div>
             <div>{b.replace("_", " ")}</div>
           </div>
         ))}
       </div>
-      {hot.items.map((it) => (
-        <div key={it.item_id} className={`card item ${it.bucket}`}>
+
+      <div className="row filterbar">
+        <input placeholder="Search the hotlist…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ maxWidth: 280 }} />
+        <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: "auto" }}>
+          <option value="">All categories</option>
+          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {(bucket || category || query) && <button onClick={() => { setBucket(""); setCategory(""); setQuery(""); }}>Clear</button>}
+        <div className="spacer" />
+        <span className="muted">{items.length} shown</span>
+      </div>
+
+      {items.map((it) => (
+        <div key={it.item_id} className={`card item ${it.bucket} clickable`} onClick={() => setOpenId(it.item_id)}>
           <div className="row">
             <span className="what">{it.what}</span>
             {it.notice_deadline && <span className="pill notice">NOTICE</span>}
@@ -164,12 +213,89 @@ function HotlistView({ api, projectId }: { api: Api; projectId: string }) {
             {it.due && <span>due {it.due}</span>}
             {it.dollar_exposure ? <span>${Math.round(it.dollar_exposure).toLocaleString()}</span> : null}
             <div className="spacer" />
-            <button onClick={() => api.act(it.item_id, "escalate").then(() => api.refresh(projectId).then(setHot))}>Escalate</button>
-            <button onClick={() => api.act(it.item_id, "done").then(() => api.refresh(projectId).then(setHot))}>Done</button>
+            <span className="muted" style={{ fontSize: 12 }}>click for detail →</span>
           </div>
-          {it.recommended_action && <div className="muted" style={{ marginTop: 6 }}>→ {it.recommended_action}</div>}
         </div>
       ))}
+      {items.length === 0 && <div className="muted">No items match your filters.</div>}
+
+      {openId && <ItemModal api={api} itemId={openId} onClose={() => setOpenId(null)} onAct={act} />}
+    </div>
+  );
+}
+
+function Bar({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="bar-row">
+      <span className="bar-label">{label}</span>
+      <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round(value * 100)}%` }} /></div>
+      <span className="bar-val mono">{value.toFixed(2)}</span>
+    </div>
+  );
+}
+
+function ItemModal({ api, itemId, onClose, onAct }: { api: Api; itemId: string; onClose: () => void; onAct: (id: string, type: string) => void }) {
+  const [item, setItem] = useState<import("./api").ItemDetail | null>(null);
+  useEffect(() => { api.item(itemId).then(setItem); }, [itemId]);
+
+  const f = item?.factors ?? {};
+  const citations: { signal_id: string; quote_span: string }[] = f.citations ?? [];
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        {!item ? <div className="muted">Loading…</div> : (
+          <>
+            <div className="row">
+              <h3 style={{ margin: 0 }}>{item.title}</h3>
+              <div className="spacer" />
+              <button onClick={onClose}>✕</button>
+            </div>
+            <div className="row muted" style={{ margin: "6px 0 14px" }}>
+              <span className="pill">{item.category}</span>
+              {item.bucket && <span className={`pill p-${item.bucket}`}>{item.bucket.replace("_", " ")}</span>}
+              {item.score != null && <span className="score">score {Math.round(item.score)}</span>}
+              {f.notice_deadline && <span className="pill notice">NOTICE DEADLINE</span>}
+            </div>
+
+            <div className="why" style={{ fontSize: 14 }}>{item.explanation}</div>
+            {f.recommended_action && <div className="reco">→ {f.recommended_action}</div>}
+
+            <h4>Why it ranked here</h4>
+            <Bar label="Urgency" value={f.urgency ?? 0} />
+            <Bar label="Impact" value={f.impact ?? 0} />
+            <Bar label="Confidence" value={f.confidence ?? 0} />
+            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              weights: urgency {f.weights?.urgency} · impact {f.weights?.impact} · confidence {f.weights?.confidence}
+              {f.dollar_exposure ? ` · exposure $${Math.round(f.dollar_exposure).toLocaleString()}` : ""}
+              {f.deadline ? ` · deadline ${String(f.deadline).slice(0, 10)}` : ""}
+            </div>
+
+            {citations.length > 0 && (
+              <>
+                <h4>Cited from the source</h4>
+                {citations.map((c, i) => <blockquote key={i} className="cite">“{c.quote_span}”</blockquote>)}
+              </>
+            )}
+
+            <h4>Sources ({item.signals.length})</h4>
+            {item.signals.map((s) => (
+              <div key={s.id} className="row srcrow">
+                <span className="pill">{s.source_type}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+                {s.url && <a href={s.url} target="_blank">open ↗</a>}
+              </div>
+            ))}
+
+            <div className="row" style={{ marginTop: 16 }}>
+              <div className="spacer" />
+              <button onClick={() => onAct(item.id, "snooze")}>Snooze</button>
+              <button onClick={() => onAct(item.id, "escalate")}>Escalate</button>
+              <button className="primary" onClick={() => onAct(item.id, "done")}>Mark done</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

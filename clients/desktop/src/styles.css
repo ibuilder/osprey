@@ -53,6 +53,36 @@ a { color: var(--ember); }
 .pill { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--mist); border: 1px solid var(--line); }
 .score { font-family: var(--mono); font-weight: 700; }
 
+.bucket.dim { opacity: 0.45; }
+.bucket { cursor: pointer; transition: opacity .15s, transform .1s; }
+.bucket:active { transform: scale(0.98); }
+.item.clickable { cursor: pointer; transition: box-shadow .12s, transform .06s; }
+.item.clickable:hover { box-shadow: 0 6px 24px -12px rgba(14,26,43,.4); }
+
+.filterbar { margin-bottom: 12px; gap: 10px; }
+.empty { text-align: center; padding: 12vh 20px; color: var(--muted); }
+.empty-mark { font-size: 40px; color: var(--ember); margin-bottom: 8px; }
+.empty h3 { color: var(--ink); margin: 0 0 6px; }
+.empty p { max-width: 420px; margin: 0 auto 16px; }
+
+/* Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(14,26,43,.5); display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; z-index: 50; }
+.modal { background: #fff; border-radius: 14px; width: 100%; max-width: 620px; max-height: 84vh; overflow: auto; padding: 22px; box-shadow: 0 30px 80px -30px rgba(0,0,0,.5); }
+.modal h4 { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.modal .reco { background: var(--mist); border-left: 3px solid var(--ember); padding: 8px 12px; border-radius: 6px; margin: 10px 0; font-size: 14px; }
+.pill.p-act_today { background: var(--prio-red); color: #fff; }
+.pill.p-this_week { background: var(--prio-amber); color: #fff; }
+.pill.p-watch { background: var(--prio-yellow); color: #fff; }
+.cite { margin: 6px 0; padding: 8px 12px; border-left: 3px solid var(--line); color: var(--ink); font-size: 13px; background: var(--mist); border-radius: 6px; }
+.srcrow { padding: 5px 0; border-bottom: 1px solid var(--line); }
+
+/* Factor bars */
+.bar-row { display: flex; align-items: center; gap: 10px; margin: 5px 0; }
+.bar-label { width: 90px; font-size: 13px; color: var(--muted); }
+.bar-track { flex: 1; height: 8px; background: var(--mist); border-radius: 999px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--ember); border-radius: 999px; }
+.bar-val { width: 40px; text-align: right; font-size: 12px; }
+
 .login { max-width: 380px; margin: 12vh auto; }
 .login .card > * { margin-bottom: 10px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
