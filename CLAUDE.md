@@ -50,7 +50,15 @@ tests) before starting the next. Run `ruff` + `mypy` + `pytest` before every com
 Connectors are tested against recorded fixtures — never live production data.
 
 ## Commands
+- Install:       `pip install -c constraints.txt -e ".[dev]"`  (constraints pin the green set)
 - Boot (infra):  `docker compose up`
 - Boot (local):  `uvicorn osprey.main:app --reload`
-- Test:          `pytest` / `ruff check` / `mypy osprey`
+- Demo:          `python -m osprey.seed`  (offline; writes demo/hotlist.xlsx + .pdf)
+- Test:          `pytest -q` · `ruff check osprey tests` · `ruff format osprey tests` · `mypy osprey`
 - Migrate:       `alembic upgrade head`
+
+## CI expectations (all blocking)
+ruff lint **and** `ruff format --check`, mypy, pytest with a coverage floor, on Python
+3.11/3.12/3.13; plus frontend (tsc+vite) and Rust (fmt/clippy/build) jobs. Run the four
+backend commands above before every commit. After an intentional dependency upgrade,
+regenerate `backend/constraints.txt` (see the header in that file).
