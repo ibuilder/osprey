@@ -56,10 +56,10 @@ otel = [
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
     "respx>=0.21",
-    "ruff>=0.5",
+    "ruff>=0.6",
     "mypy>=1.10",
-    "types-python-jose",
 ]
 
 [tool.setuptools.packages.find]
@@ -69,7 +69,27 @@ include = ["osprey*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-filterwarnings = ["ignore::DeprecationWarning"]
+# Scoped, not blanket: new deprecations must stay visible so upstream breakage is
+# caught before it becomes an error. Add a narrow entry (with a reason) per warning.
+filterwarnings = [
+    "default::DeprecationWarning",
+    # PyJWT warns on the short HMAC keys used by the offline test fixtures.
+    "ignore:.*HMAC key.*:UserWarning",
+]
+
+[tool.coverage.run]
+source = ["osprey"]
+branch = true
+omit = ["osprey/workers/main.py"]   # arq CLI entrypoint; exercised via workers/tasks.py
+
+[tool.coverage.report]
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
 
 [tool.ruff]
 line-length = 100

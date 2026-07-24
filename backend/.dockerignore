@@ -1,0 +1,23 @@
+# Keep the build context minimal: no virtualenvs, caches, dev data, or test output.
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Dev data / generated artifacts — never ship these in an image.
+*.db
+*.sqlite3
+osprey.db*
+osprey-demo.db*
+demo/
+.env
+
+# Tests are not needed at runtime (CI runs them from the checkout).
+tests/

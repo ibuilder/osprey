@@ -1,0 +1,8 @@
+# Default owner for everything.
+*                       @ibuilder
+
+# Security-sensitive areas — always review carefully.
+/backend/osprey/security/    @ibuilder
+/backend/osprey/scripts/     @ibuilder
+/.github/workflows/          @ibuilder
+/deploy/                     @ibuilder
