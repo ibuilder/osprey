@@ -1,0 +1,42 @@
+version: 2
+updates:
+  # Backend Python deps. Grouped so routine bumps arrive as one reviewable PR;
+  # majors stay separate because they need a deliberate test run (see the caps in
+  # pyproject.toml) and constraints.txt must be regenerated alongside them.
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "backend"]
+
+  # Desktop frontend.
+  - package-ecosystem: npm
+    directory: /clients/desktop
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "desktop"]
+
+  # Desktop Rust shell.
+  - package-ecosystem: cargo
+    directory: /clients/desktop/src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "desktop"]
+
+  # Pin drift in the workflows themselves.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "ci"]

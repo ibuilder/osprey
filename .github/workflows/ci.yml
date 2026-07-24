@@ -5,9 +5,22 @@ on:
     branches: [main]
   pull_request:
 
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
+  # ---- Backend: lint, format, types, tests, coverage ----------------------- #
   backend:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
     defaults:
       run:
         working-directory: backend
@@ -15,32 +28,122 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install (version-pinned via constraints)
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -c constraints.txt -e ".[dev]"
+
       - name: Lint (ruff)
         run: ruff check osprey tests
-      - name: Types (mypy)
-        run: mypy osprey || true   # advisory until fully annotated
-      - name: Test (pytest)
-        run: pytest -q
 
+      - name: Format check (ruff format)
+        run: ruff format --check osprey tests
+
+      - name: Types (mypy)
+        run: mypy osprey
+
+      # Branch coverage is on, so this number is stricter than line coverage.
+      # Ratchet the floor up as tests land; never lower it to make a PR pass.
+      - name: Test + coverage
+        run: pytest -q --cov=osprey --cov-report=term-missing --cov-report=xml --cov-fail-under=73
+
+      - name: Upload coverage
+        if: matrix.python == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: backend/coverage.xml
+
+  # ---- Desktop frontend: typecheck + build -------------------------------- #
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: clients/desktop/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build
+        run: npx vite build
+
+  # ---- Desktop Rust shell: fmt, clippy, build ----------------------------- #
+  # Non-blocking on its first outings: this code has never been compiled in CI, so
+  # it is expected to need fixes. Flip continue-on-error off once it is green.
+  desktop-rust:
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: clients/desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tauri Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: clients/desktop/src-tauri
+      - name: Format check
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      # NOTE: add `--locked` once Cargo.lock is generated and committed (requires a
+      # machine with cargo: `cd clients/desktop/src-tauri && cargo generate-lockfile`).
+      - name: Build
+        run: cargo build
+
+  # ---- Supply chain: SBOM, vuln scans -------------------------------------- #
   supply-chain:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: SBOM (Syft)
         uses: anchore/sbom-action@v0
         with:
           path: ./backend
           format: spdx-json
           output-file: osprey-sbom.spdx.json
-      - name: Vulnerability scan (Trivy)
+
+      - name: Python dependency audit (pip-audit)
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip install -c constraints.txt -e "."
+          pip-audit --strict --progress-spinner off || echo "::warning::pip-audit reported findings"
+
+      - name: npm audit (desktop)
+        working-directory: clients/desktop
+        run: npm audit --audit-level=high || echo "::warning::npm audit reported findings"
+
+      - name: Filesystem scan (Trivy)
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-          trivy fs --severity HIGH,CRITICAL --exit-code 0 ./backend   # report, don't block
+          trivy fs --severity HIGH,CRITICAL --exit-code 0 --no-progress ./backend
+
+      - name: Build image and scan it
+        run: |
+          docker build -t osprey:ci ./backend
+          trivy image --severity HIGH,CRITICAL --exit-code 0 --no-progress osprey:ci
+
       - uses: actions/upload-artifact@v4
         with:
           name: sbom
