@@ -1,0 +1,5 @@
+# Bulk, mechanical reformats — ignore in blame:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: apply ruff format across backend
+ce2bc664a429d4f7b7872c04e27718ed5cfa9984
