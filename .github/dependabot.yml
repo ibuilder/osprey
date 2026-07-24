@@ -24,6 +24,17 @@ updates:
       frontend-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # React 19 (and its types) is a deliberate, separately-tested migration — a
+      # piecemeal bump breaks peer resolution (@types/react-dom@18 needs @types/react@^18).
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
     labels: ["dependencies", "desktop"]
 
   # Desktop Rust shell.

@@ -95,7 +95,11 @@ async fn oauth_connect(
     let connection: serde_json::Value = http
         .post(format!("{base_url}/connections/exchange"))
         .bearer_auth(&token)
-        .json(&ExchangeReq { code, state, redirect_uri })
+        .json(&ExchangeReq {
+            code,
+            state,
+            redirect_uri,
+        })
         .send()
         .await
         .map_err(|e| format!("exchange request failed: {e}"))?
@@ -123,7 +127,9 @@ async fn wait_for_code(listener: TcpListener) -> Result<(String, String), String
     let mut state = None;
     for pair in query.split('&') {
         if let Some((k, v)) = pair.split_once('=') {
-            let val = urlencoding::decode(v).map(|c| c.into_owned()).unwrap_or_default();
+            let val = urlencoding::decode(v)
+                .map(|c| c.into_owned())
+                .unwrap_or_default();
             match k {
                 "code" => code = Some(val),
                 "state" => state = Some(val),
@@ -150,7 +156,9 @@ text-align:center;padding-top:20vh'><h2>Osprey connected \u{2713}</h2>\
 
 fn open_url(url: &str) {
     #[cfg(target_os = "windows")]
-    let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn();
     #[cfg(target_os = "macos")]
     let _ = std::process::Command::new("open").arg(url).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
