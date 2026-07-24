@@ -48,7 +48,9 @@ async def lifespan(app: FastAPI):
     # In dev/test the schema is created on boot; production uses Alembic migrations.
     if not settings.is_prod:
         await create_all()
-    log.info("Osprey %s starting (env=%s, connectors=%s)", __version__, settings.env, registry.types())
+    log.info(
+        "Osprey %s starting (env=%s, connectors=%s)", __version__, settings.env, registry.types()
+    )
     yield
     await dispose()
 
@@ -69,8 +71,18 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     for module in (
-        health, auth, projects, connections, hotlist, items, webhooks,
-        ai, scripts, admin, devices, ws,
+        health,
+        auth,
+        projects,
+        connections,
+        hotlist,
+        items,
+        webhooks,
+        ai,
+        scripts,
+        admin,
+        devices,
+        ws,
     ):
         app.include_router(module.router)
 

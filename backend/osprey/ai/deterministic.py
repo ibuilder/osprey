@@ -22,15 +22,37 @@ _NOTICE_CUES = re.compile(
     re.I,
 )
 _CATEGORY_RULES: list[tuple[Category, re.Pattern[str]]] = [
-    (Category.contractual_notice, re.compile(r"\b(notice of|claim|reservation of rights|time[- ]?bar)\b", re.I)),
-    (Category.safety, re.compile(r"\b(safety|osha|incident|injur|near[- ]miss|hazard|fall protection)\b", re.I)),
-    (Category.change_order, re.compile(r"\b(change order|c\.?o\.?\s?#|cor\b|pco\b|scope change|extra work)\b", re.I)),
+    (
+        Category.contractual_notice,
+        re.compile(r"\b(notice of|claim|reservation of rights|time[- ]?bar)\b", re.I),
+    ),
+    (
+        Category.safety,
+        re.compile(r"\b(safety|osha|incident|injur|near[- ]miss|hazard|fall protection)\b", re.I),
+    ),
+    (
+        Category.change_order,
+        re.compile(r"\b(change order|c\.?o\.?\s?#|cor\b|pco\b|scope change|extra work)\b", re.I),
+    ),
     (Category.rfi, re.compile(r"\b(rfi|request for information|clarification)\b", re.I)),
-    (Category.submittal, re.compile(r"\b(submittal|shop drawing|product data|sample|resubmit)\b", re.I)),
-    (Category.invoice, re.compile(r"\b(invoice|payment application|pay app|pay application|retention|billing)\b", re.I)),
-    (Category.schedule, re.compile(r"\b(schedule|delay|critical path|milestone|look[- ]?ahead|float)\b", re.I)),
+    (
+        Category.submittal,
+        re.compile(r"\b(submittal|shop drawing|product data|sample|resubmit)\b", re.I),
+    ),
+    (
+        Category.invoice,
+        re.compile(
+            r"\b(invoice|payment application|pay app|pay application|retention|billing)\b", re.I
+        ),
+    ),
+    (
+        Category.schedule,
+        re.compile(r"\b(schedule|delay|critical path|milestone|look[- ]?ahead|float)\b", re.I),
+    ),
 ]
-_BLOCK_CUES = re.compile(r"\b(block(s|ing|ed)?|hold(s|ing)?|cannot proceed|awaiting|pending|depends on)\b", re.I)
+_BLOCK_CUES = re.compile(
+    r"\b(block(s|ing|ed)?|hold(s|ing)?|cannot proceed|awaiting|pending|depends on)\b", re.I
+)
 _MONEY_RE = re.compile(r"\$\s?([0-9][0-9,]*(?:\.\d{2})?)(\s?[kKmM])?")
 _DATE_RES = [
     re.compile(r"\b(\d{4}-\d{2}-\d{2})\b"),
@@ -44,8 +66,10 @@ class DeterministicProvider(LLMProvider):
     name = "deterministic"
 
     async def extract(self, payload: ExtractionInput) -> Extraction:
-        text = payload.item_title + "\n" + "\n".join(
-            f"{s.get('title', '')}\n{s.get('body', '')}" for s in payload.signals
+        text = (
+            payload.item_title
+            + "\n"
+            + "\n".join(f"{s.get('title', '')}\n{s.get('body', '')}" for s in payload.signals)
         )
 
         category = self._categorize(text)
@@ -170,7 +194,9 @@ class DeterministicProvider(LLMProvider):
         return out
 
     def _summary(self, payload: ExtractionInput, category: Category) -> str:
-        title = payload.item_title.strip() or (payload.signals[0].get("title") if payload.signals else "")
+        title = payload.item_title.strip() or (
+            payload.signals[0].get("title") if payload.signals else ""
+        )
         n = len(payload.signals)
         src = f" across {n} sources" if n > 1 else ""
         return f"{category.value.replace('_', ' ').title()}: {title}{src}".strip()

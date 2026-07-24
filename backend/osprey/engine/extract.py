@@ -16,7 +16,9 @@ async def _item_signals(session: AsyncSession, item_id: str) -> list[Signal]:
             await session.execute(
                 select(Signal).where(Signal.item_id == item_id).order_by(Signal.occurred_at.asc())
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 

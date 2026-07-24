@@ -87,8 +87,8 @@ def parse_csv(text: str, *, source_kind: SourceKind = SourceKind.general) -> lis
     events: list[RawEvent] = []
     reader = csv.DictReader(io.StringIO(text))
     for i, row in enumerate(reader):
-        low = { (k or "").strip().lower(): (v or "").strip() for k, v in row.items() }
-        ext = low.get("id") or low.get("number") or low.get("ref") or f"row-{i+1}"
+        low = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+        ext = low.get("id") or low.get("number") or low.get("ref") or f"row-{i + 1}"
         title = low.get("title") or low.get("subject") or low.get("description") or ext
         due = _parse_dt(low.get("due") or low.get("due_date") or low.get("deadline"))
         amount = _parse_amount(low.get("amount") or low.get("value") or low.get("cost"))
@@ -145,11 +145,15 @@ class FileDropConnector(Connector):
         if kind == "email":
             yield parse_email(payload["raw"], external_id=payload.get("external_id"))
         elif kind == "csv":
-            for ev in parse_csv(payload["raw"], source_kind=SourceKind(payload.get("source_kind", "general"))):
+            for ev in parse_csv(
+                payload["raw"], source_kind=SourceKind(payload.get("source_kind", "general"))
+            ):
                 yield ev
         else:
             yield RawEvent(
-                external_id=payload.get("external_id", f"drop-{hash(str(payload)) & 0xFFFFFFFF:08x}"),
+                external_id=payload.get(
+                    "external_id", f"drop-{hash(str(payload)) & 0xFFFFFFFF:08x}"
+                ),
                 source_kind=SourceKind(payload.get("source_kind", "general")),
                 title=payload.get("title", ""),
                 body=clean_text(payload.get("body", ""), drop_quoted=False),

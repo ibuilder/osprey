@@ -29,8 +29,11 @@ async def _project_and_conn(session, source_type: str):
     session.add(project)
     await session.flush()
     conn = Connection(
-        org_id=org.id, project_id=project.id, source_type=source_type,
-        account_ref="acct", status=ConnectionStatus.active,
+        org_id=org.id,
+        project_id=project.id,
+        source_type=source_type,
+        account_ref="acct",
+        status=ConnectionStatus.active,
     )
     session.add(conn)
     await session.flush()
@@ -49,7 +52,9 @@ async def test_outlook_poll_delta_pagination(session):
     def graph_router(request: httpx.Request) -> httpx.Response:
         def msg(i: str, subj: str):
             return {
-                "id": i, "subject": subj, "conversationId": f"c-{i}",
+                "id": i,
+                "subject": subj,
+                "conversationId": f"c-{i}",
                 "from": {"emailAddress": {"address": "pm@gc.com"}},
                 "toRecipients": [{"emailAddress": {"address": "sub@x.com"}}],
                 "ccRecipients": [],
@@ -59,14 +64,20 @@ async def test_outlook_poll_delta_pagination(session):
             }
 
         if "skiptoken=P2" in str(request.url):
-            return httpx.Response(200, json={
-                "value": [msg("m3", "RFI followup")],
-                "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta?$deltatoken=D",
-            })
-        return httpx.Response(200, json={
-            "value": [msg("m1", "Notice of delay"), msg("m2", "Pay app 07")],
-            "@odata.nextLink": page2_url,
-        })
+            return httpx.Response(
+                200,
+                json={
+                    "value": [msg("m3", "RFI followup")],
+                    "@odata.deltaLink": "https://graph.microsoft.com/v1.0/delta?$deltatoken=D",
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "value": [msg("m1", "Notice of delay"), msg("m2", "Pay app 07")],
+                "@odata.nextLink": page2_url,
+            },
+        )
 
     respx.get(re.compile(r"https://graph\.microsoft\.com/.*")).mock(side_effect=graph_router)
 
@@ -75,7 +86,7 @@ async def test_outlook_poll_delta_pagination(session):
     view = ConnView(id=conn.id, source_type="outlook", tokens={"refresh_token": "r"})
 
     events = [ev async for ev in connector.poll(view, None)]
-    assert [e.external_id for e in events] == ["m1", "m2", "m3"]   # both pages followed
+    assert [e.external_id for e in events] == ["m1", "m2", "m3"]  # both pages followed
 
     created = await ingest_events(session, connector, conn, events)
     assert len(created) == 3
@@ -91,21 +102,30 @@ async def test_gmail_poll_list_then_get(session):
     )
 
     def message(i: str):
-        return httpx.Response(200, json={
-            "id": i, "threadId": f"t-{i}", "snippet": f"snippet {i}",
-            "internalDate": "1753174800000",
-            "payload": {
-                "headers": [
-                    {"name": "Subject", "value": f"Submittal {i}"},
-                    {"name": "From", "value": "arch@ae.com"},
-                    {"name": "To", "value": "pm@gc.com"},
-                ],
-                "body": {"data": ""},
+        return httpx.Response(
+            200,
+            json={
+                "id": i,
+                "threadId": f"t-{i}",
+                "snippet": f"snippet {i}",
+                "internalDate": "1753174800000",
+                "payload": {
+                    "headers": [
+                        {"name": "Subject", "value": f"Submittal {i}"},
+                        {"name": "From", "value": "arch@ae.com"},
+                        {"name": "To", "value": "pm@gc.com"},
+                    ],
+                    "body": {"data": ""},
+                },
             },
-        })
+        )
 
-    respx.get(re.compile(r"https://gmail\.googleapis\.com/.*/messages/a1")).mock(return_value=message("a1"))
-    respx.get(re.compile(r"https://gmail\.googleapis\.com/.*/messages/a2")).mock(return_value=message("a2"))
+    respx.get(re.compile(r"https://gmail\.googleapis\.com/.*/messages/a1")).mock(
+        return_value=message("a1")
+    )
+    respx.get(re.compile(r"https://gmail\.googleapis\.com/.*/messages/a2")).mock(
+        return_value=message("a2")
+    )
 
     project, conn = await _project_and_conn(session, "gmail")
     connector = GmailConnector()
@@ -124,23 +144,45 @@ async def test_procore_poll_iterates_resources(session):
     def resource_router(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if url.endswith("/rfis") or "/rfis?" in url:
-            return httpx.Response(200, json=[
-                {"id": 5001, "number": "RFI-0500", "subject": "Anchor spacing",
-                 "question": {"body": "confirm spacing"}, "due_date": "2026-07-30",
-                 "status": "open", "html_url": "https://app.procore.com/rfis/5001"}
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 5001,
+                        "number": "RFI-0500",
+                        "subject": "Anchor spacing",
+                        "question": {"body": "confirm spacing"},
+                        "due_date": "2026-07-30",
+                        "status": "open",
+                        "html_url": "https://app.procore.com/rfis/5001",
+                    }
+                ],
+            )
         if "/change_orders" in url:
-            return httpx.Response(200, json=[
-                {"id": 88, "number": "PCO-088", "title": "Slab thickening",
-                 "description": "extra work", "grand_total": "45000", "status": "open"}
-            ])
-        return httpx.Response(200, json=[])   # other resources empty
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 88,
+                        "number": "PCO-088",
+                        "title": "Slab thickening",
+                        "description": "extra work",
+                        "grand_total": "45000",
+                        "status": "open",
+                    }
+                ],
+            )
+        return httpx.Response(200, json=[])  # other resources empty
 
-    respx.get(re.compile(r"https://api\.procore\.com/rest/v1\.1/.*")).mock(side_effect=resource_router)
+    respx.get(re.compile(r"https://api\.procore\.com/rest/v1\.1/.*")).mock(
+        side_effect=resource_router
+    )
 
     project, conn = await _project_and_conn(session, "procore")
     connector = ProcoreConnector()
-    view = ConnView(id=conn.id, source_type="procore", account_ref="company-1", tokens={"access_token": "t"})
+    view = ConnView(
+        id=conn.id, source_type="procore", account_ref="company-1", tokens={"access_token": "t"}
+    )
 
     events = [ev async for ev in connector.poll(view, None)]
     ids = {e.external_id for e in events}

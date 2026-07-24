@@ -42,12 +42,17 @@ async def test_ai_connection_create_hides_key(auth_client):
     client, _ = auth_client
     resp = await client.post(
         "/ai/connections",
-        json={"provider": "claude", "label": "My Claude", "model": "claude-sonnet-5", "api_key": "sk-secret"},
+        json={
+            "provider": "claude",
+            "label": "My Claude",
+            "model": "claude-sonnet-5",
+            "api_key": "sk-secret",
+        },
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["has_key"] is True
-    assert "api_key" not in body and "sk-secret" not in str(body)   # never returned
+    assert "api_key" not in body and "sk-secret" not in str(body)  # never returned
     listed = (await client.get("/ai/connections")).json()
     assert listed[0]["provider"] == "claude"
 

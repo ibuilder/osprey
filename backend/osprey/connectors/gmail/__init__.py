@@ -57,9 +57,7 @@ def normalize_gmail_message(msg: dict) -> RawEvent:
     participants = [p.strip() for p in f"{frm},{to},{cc}".split(",") if "@" in p]
     body = clean_text(_decode_part(payload) or msg.get("snippet", ""))
     ts = msg.get("internalDate")
-    occurred = (
-        datetime.fromtimestamp(int(ts) / 1000, tz=UTC) if ts else utcnow()
-    )
+    occurred = datetime.fromtimestamp(int(ts) / 1000, tz=UTC) if ts else utcnow()
     return RawEvent(
         external_id=msg["id"],
         source_kind=SourceKind.email,
@@ -117,7 +115,9 @@ class GmailConnector(Connector):
             )
             listing.raise_for_status()
             for ref in listing.json().get("messages", []):
-                full = await client.get(f"{API}/users/me/messages/{ref['id']}", params={"format": "full"})
+                full = await client.get(
+                    f"{API}/users/me/messages/{ref['id']}", params={"format": "full"}
+                )
                 full.raise_for_status()
                 yield normalize_gmail_message(full.json())
 

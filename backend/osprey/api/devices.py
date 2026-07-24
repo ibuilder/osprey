@@ -15,7 +15,7 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 
 
 class DeviceRegister(BaseModel):
-    platform: str = "web"          # ios | android | web
+    platform: str = "web"  # ios | android | web
     token: str
 
 
@@ -53,6 +53,8 @@ async def list_devices(
     principal: Principal = Depends(current_principal),
 ) -> list[DeviceOut]:
     rows = (
-        await session.execute(select(Device).where(Device.user_id == principal.user_id))
-    ).scalars().all()
+        (await session.execute(select(Device).where(Device.user_id == principal.user_id)))
+        .scalars()
+        .all()
+    )
     return [DeviceOut(id=r.id, platform=r.platform) for r in rows]

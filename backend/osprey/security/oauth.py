@@ -40,7 +40,7 @@ class OAuthSpec(BaseModel):
 class AuthorizeRequest(BaseModel):
     project_id: str
     source_type: str
-    redirect_uri: str          # desktop loopback, e.g. http://127.0.0.1:53682/callback
+    redirect_uri: str  # desktop loopback, e.g. http://127.0.0.1:53682/callback
     account_ref: str = ""
 
 

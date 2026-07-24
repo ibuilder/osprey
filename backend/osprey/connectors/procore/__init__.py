@@ -32,11 +32,18 @@ _KIND = {
 }
 
 
-def normalize_procore_resource(resource_name: str, obj: dict, *, company_url: str | None = None) -> RawEvent:
+def normalize_procore_resource(
+    resource_name: str, obj: dict, *, company_url: str | None = None
+) -> RawEvent:
     """Map a Procore resource payload to a RawEvent (pure)."""
     kind = _KIND.get(resource_name, SourceKind.general)
     number = obj.get("number") or obj.get("formatted_number") or obj.get("id")
-    subject = obj.get("subject") or obj.get("title") or obj.get("description") or f"{resource_name} {number}"
+    subject = (
+        obj.get("subject")
+        or obj.get("title")
+        or obj.get("description")
+        or f"{resource_name} {number}"
+    )
     body = clean_text(
         obj.get("body")
         or obj.get("description")
@@ -49,7 +56,9 @@ def normalize_procore_resource(resource_name: str, obj: dict, *, company_url: st
     amount = _num(obj.get("grand_total") or obj.get("amount") or obj.get("total"))
     assignee = ((obj.get("assignee") or {}) or {}).get("name") or obj.get("received_from")
     participants = [p for p in [assignee, ((obj.get("created_by") or {}) or {}).get("name")] if p]
-    url = obj.get("html_url") or (f"{company_url}/{resource_name}/{obj.get('id')}" if company_url else None)
+    url = obj.get("html_url") or (
+        f"{company_url}/{resource_name}/{obj.get('id')}" if company_url else None
+    )
     return RawEvent(
         external_id=f"procore:{resource_name}:{obj.get('id')}",
         source_kind=kind,
@@ -91,7 +100,7 @@ def _num(val) -> float | None:
 @registry.register
 class ProcoreConnector(Connector):
     source_type = "procore"
-    scopes: list[str] = []          # Procore scopes are configured on the OAuth app
+    scopes: list[str] = []  # Procore scopes are configured on the OAuth app
     supports_webhooks = True
 
     def oauth_spec(self):
@@ -111,7 +120,9 @@ class ProcoreConnector(Connector):
         token = conn.tokens.get("access_token", "")
         company_id = conn.account_ref
         headers = {"Authorization": f"Bearer {token}", "Procore-Company-Id": company_id}
-        async with httpx.AsyncClient(timeout=60, headers=headers, base_url=settings.procore_base_url) as client:
+        async with httpx.AsyncClient(
+            timeout=60, headers=headers, base_url=settings.procore_base_url
+        ) as client:
             for resource in _KIND:
                 resp = await client.get(f"/rest/v1.1/{resource}", params={"per_page": 50})
                 if resp.status_code != 200:

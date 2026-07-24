@@ -35,8 +35,12 @@ async def refresh(
 ) -> dict:
     snapshot = await refresh_project(session, project.id, generated_by=principal.email)
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="hotlist.refreshed", target=project.id, meta={"items": snapshot.payload.get("item_count", 0)},
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="hotlist.refreshed",
+        target=project.id,
+        meta={"items": snapshot.payload.get("item_count", 0)},
     )
     return snapshot.payload
 
@@ -68,8 +72,12 @@ async def export_hotlist(
     payload = snapshot.payload
 
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="hotlist.exported", target=project.id, meta={"format": format},
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="hotlist.exported",
+        target=project.id,
+        meta={"format": format},
     )
 
     if format == "pdf":

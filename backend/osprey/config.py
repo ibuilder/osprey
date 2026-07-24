@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     debug: bool = True
     log_level: str = "INFO"
     app_name: str = "Osprey"
-    public_base_url: str = ""          # external URL for webhook callbacks (subscriptions)
+    public_base_url: str = ""  # external URL for webhook callbacks (subscriptions)
 
     # ---- Security -----------------------------------------------------------
     # Override BOTH of these in production. Defaults are intentionally insecure
@@ -80,10 +80,10 @@ class Settings(BaseSettings):
     # ---- Observability (OpenTelemetry; optional 'otel' extra) ----------------
     otel_enabled: bool = False
     otel_service_name: str = "osprey-api"
-    otel_exporter_otlp_endpoint: str = ""   # e.g. http://otel-collector:4317
+    otel_exporter_otlp_endpoint: str = ""  # e.g. http://otel-collector:4317
 
     # ---- Row-level security (Postgres tenant isolation) ----------------------
-    rls_enabled: bool = False               # requires the 0002 migration + a non-superuser DB role
+    rls_enabled: bool = False  # requires the 0002 migration + a non-superuser DB role
 
     # ---- Push notifications --------------------------------------------------
     # "logging" (offline default) | "auto" (route by device platform to any
@@ -92,8 +92,8 @@ class Settings(BaseSettings):
     # APNs (token-based auth)
     apns_team_id: str = ""
     apns_key_id: str = ""
-    apns_private_key: str = ""          # contents of the .p8 (PKCS8 EC PEM)
-    apns_bundle_id: str = ""            # apns-topic
+    apns_private_key: str = ""  # contents of the .p8 (PKCS8 EC PEM)
+    apns_bundle_id: str = ""  # apns-topic
     apns_use_sandbox: bool = False
     # FCM (HTTP v1 + service account)
     fcm_project_id: str = ""

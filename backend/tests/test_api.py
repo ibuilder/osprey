@@ -89,7 +89,9 @@ async def test_end_to_end_hotlist_and_exports(auth_client):
 async def test_rbac_viewer_cannot_act(auth_client, client):
     owner_client, owner = auth_client
     project_id, conn_id = await _make_project_with_connection(owner_client)
-    await owner_client.post(f"/connections/{conn_id}/forward", json={"kind": "email", "raw": RFI_EMAIL})
+    await owner_client.post(
+        f"/connections/{conn_id}/forward", json={"kind": "email", "raw": RFI_EMAIL}
+    )
     await owner_client.get(f"/projects/{project_id}/hotlist", params={"refresh": "true"})
     item_id = (await owner_client.get(f"/projects/{project_id}/items")).json()[0]["id"]
 

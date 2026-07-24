@@ -23,8 +23,14 @@ _EXTRACT_FN = {
                 "category": {
                     "type": "string",
                     "enum": [
-                        "rfi", "change_order", "submittal", "invoice", "safety",
-                        "schedule", "contractual_notice", "general",
+                        "rfi",
+                        "change_order",
+                        "submittal",
+                        "invoice",
+                        "safety",
+                        "schedule",
+                        "contractual_notice",
+                        "general",
                     ],
                 },
                 "summary": {"type": "string"},
@@ -82,7 +88,9 @@ _SIFT_FN = {
 class OpenAIProvider(LLMProvider):
     name = "openai"
 
-    def __init__(self, *, api_key: str | None = None, model: str | None = None, base_url: str | None = None) -> None:
+    def __init__(
+        self, *, api_key: str | None = None, model: str | None = None, base_url: str | None = None
+    ) -> None:
         from openai import AsyncOpenAI  # imported lazily
 
         key = api_key or settings.anthropic_api_key  # falls back only if explicitly set elsewhere
@@ -106,5 +114,7 @@ class OpenAIProvider(LLMProvider):
         return Extraction.model_validate(args)
 
     async def sift(self, payload: SiftInput) -> list[SiftFinding]:
-        args = await self._call(_SIFT_SYSTEM, json.dumps(payload.model_dump(), default=str), _SIFT_FN)
+        args = await self._call(
+            _SIFT_SYSTEM, json.dumps(payload.model_dump(), default=str), _SIFT_FN
+        )
         return [SiftFinding.model_validate(f) for f in args.get("findings", [])]

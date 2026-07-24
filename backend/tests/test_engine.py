@@ -40,8 +40,11 @@ async def _setup(session):
     session.add(project)
     await session.flush()
     conn_row = Connection(
-        org_id=org.id, project_id=project.id, source_type="filedrop",
-        account_ref="drop@in.osprey", status=ConnectionStatus.active,
+        org_id=org.id,
+        project_id=project.id,
+        source_type="filedrop",
+        account_ref="drop@in.osprey",
+        status=ConnectionStatus.active,
     )
     session.add(conn_row)
     await session.flush()

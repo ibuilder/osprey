@@ -16,7 +16,7 @@ async def test_sources_lists_auth_modes(auth_client):
     client, _ = auth_client
     sources = {s["source_type"]: s for s in (await client.get("/connections/sources")).json()}
     assert sources["outlook"]["auth"] == "oauth"
-    assert sources["outlook"]["configured"] is True          # creds set in test env
+    assert sources["outlook"]["configured"] is True  # creds set in test env
     assert sources["filedrop"]["auth"] == "forward"
     assert sources["pyscript"]["auth"] == "internal"
     assert set(sources["outlook"]["scopes"]) >= {"Mail.Read"}
@@ -37,13 +37,13 @@ async def test_authorize_returns_valid_consent_url(auth_client):
     assert "login.microsoftonline.com" in parsed.netloc
     assert qs["client_id"] == ["test-msgraph-client"]
     assert qs["redirect_uri"] == [redirect]
-    assert qs["code_challenge_method"] == ["S256"]      # PKCE
+    assert qs["code_challenge_method"] == ["S256"]  # PKCE
     assert qs["response_type"] == ["code"]
     # State is a signed JWT carrying the flow context + PKCE verifier.
     claims = verify_state(qs["state"][0])
     assert claims["source_type"] == "outlook"
     assert claims["project_id"] == project_id
-    assert claims["cv"]                                  # code_verifier present
+    assert claims["cv"]  # code_verifier present
 
 
 async def test_authorize_unconfigured_source_503(auth_client, monkeypatch):
@@ -52,7 +52,11 @@ async def test_authorize_unconfigured_source_503(auth_client, monkeypatch):
     # Procore creds are not set in the test env.
     resp = await client.post(
         "/connections/authorize",
-        json={"project_id": project_id, "source_type": "procore", "redirect_uri": "http://127.0.0.1:9/cb"},
+        json={
+            "project_id": project_id,
+            "source_type": "procore",
+            "redirect_uri": "http://127.0.0.1:9/cb",
+        },
     )
     assert resp.status_code == 503
 
@@ -65,7 +69,7 @@ async def test_exchange_creates_connection(auth_client, monkeypatch):
     # Stub the network token exchange + account lookup (no live tenant in tests).
     async def fake_exchange(self, code, redirect_uri, code_verifier):
         assert code == "auth-code-123"
-        assert code_verifier                              # PKCE verifier relayed
+        assert code_verifier  # PKCE verifier relayed
         return {"access_token": "at", "refresh_token": "rt", "expires_in": 3600}
 
     async def fake_account(self, tokens):

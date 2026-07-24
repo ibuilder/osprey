@@ -29,6 +29,6 @@ def satisfies(actual: Role, required: Role) -> bool:
 
 # Capability map — the minimum role each action requires.
 CAN_VIEW = Role.viewer
-CAN_ACT_ON_ITEM = Role.pm          # done/snooze/dismiss/escalate/assign
+CAN_ACT_ON_ITEM = Role.pm  # done/snooze/dismiss/escalate/assign
 CAN_MANAGE_CONNECTIONS = Role.admin
 CAN_MANAGE_ORG = Role.owner

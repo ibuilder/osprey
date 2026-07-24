@@ -62,7 +62,9 @@ async def sift_to_hotlist(
                 .order_by(Signal.occurred_at.desc())
                 .limit(max_signals)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     provider = await _build_provider(session, ai_connection_id)
     payload = SiftInput(
@@ -75,7 +77,9 @@ async def sift_to_hotlist(
 
     events: list[RawEvent] = []
     for idx, f in enumerate(findings):
-        digest = hashlib.sha256(f"{instruction}|{idx}|{sorted(f.matched_signal_ids)}".encode()).hexdigest()[:16]
+        digest = hashlib.sha256(
+            f"{instruction}|{idx}|{sorted(f.matched_signal_ids)}".encode()
+        ).hexdigest()[:16]
         events.append(
             RawEvent(
                 external_id=f"ai:{digest}",
@@ -91,26 +95,38 @@ async def sift_to_hotlist(
             )
         )
     await emit_events(
-        session, org_id=org_id, project_id=project_id, source_type="ai", events=events, account_ref="ai-sift"
+        session,
+        org_id=org_id,
+        project_id=project_id,
+        source_type="ai",
+        events=events,
+        account_ref="ai-sift",
     )
     await run_pipeline(session, project_id)
     await build_hotlist(session, project_id, generated_by=generated_by)
 
     # Map the fresh AI items back for the response.
     ai_signals = (
-        await session.execute(
-            select(Signal).where(
-                Signal.project_id == project_id,
-                Signal.external_id.in_([e.external_id for e in events]),
+        (
+            await session.execute(
+                select(Signal).where(
+                    Signal.project_id == project_id,
+                    Signal.external_id.in_([e.external_id for e in events]),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     by_item = {s.item_id: s for s in ai_signals if s.item_id}
     results: list[dict] = []
     for item_id, sig in by_item.items():
         score = (
             await session.execute(
-                select(Score).where(Score.item_id == item_id).order_by(Score.version.desc()).limit(1)
+                select(Score)
+                .where(Score.item_id == item_id)
+                .order_by(Score.version.desc())
+                .limit(1)
             )
         ).scalar_one_or_none()
         results.append(

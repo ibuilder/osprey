@@ -57,7 +57,10 @@ def project_weights(project: Project | None) -> dict[str, float]:
 async def _latest_version(session: AsyncSession, item_id: str) -> int:
     row = (
         await session.execute(
-            select(Score.version).where(Score.item_id == item_id).order_by(Score.version.desc()).limit(1)
+            select(Score.version)
+            .where(Score.item_id == item_id)
+            .order_by(Score.version.desc())
+            .limit(1)
         )
     ).scalar_one_or_none()
     return row or 0
@@ -117,10 +120,14 @@ async def _latest_scores(session: AsyncSession, item_ids: list[str]) -> dict[str
     if not item_ids:
         return {}
     rows = (
-        await session.execute(
-            select(Score).where(Score.item_id.in_(item_ids)).order_by(Score.version.asc())
+        (
+            await session.execute(
+                select(Score).where(Score.item_id.in_(item_ids)).order_by(Score.version.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     latest: dict[str, Score] = {}
     for s in rows:  # ascending version -> last write wins = latest
         latest[s.item_id] = s
@@ -129,8 +136,8 @@ async def _latest_scores(session: AsyncSession, item_ids: list[str]) -> dict[str
 
 async def _item_sources(session: AsyncSession, item_id: str) -> list[dict]:
     signals = (
-        await session.execute(select(Signal).where(Signal.item_id == item_id))
-    ).scalars().all()
+        (await session.execute(select(Signal).where(Signal.item_id == item_id))).scalars().all()
+    )
     return [
         {"source_type": s.source_type, "title": s.title, "url": s.url, "kind": s.source_kind.value}
         for s in signals
@@ -150,7 +157,9 @@ async def build_hotlist(
             await session.execute(
                 select(Item).where(Item.project_id == project_id, Item.status == ItemStatus.open)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     scores = await _latest_scores(session, [i.id for i in items])
 

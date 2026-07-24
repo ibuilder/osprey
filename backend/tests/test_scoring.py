@@ -40,9 +40,7 @@ def test_notice_item_outranks_bigger_dollar_general_item():
         deadline=(NOW + timedelta(days=1)).isoformat(),
         confidence=0.8,
     )
-    big_money = Extraction(
-        category=Category.general, dollar_exposure=250_000, confidence=0.8
-    )
+    big_money = Extraction(category=Category.general, dollar_exposure=250_000, confidence=0.8)
     s_notice = score_item(notice, last_activity=NOW, now=NOW)
     s_money = score_item(big_money, last_activity=NOW, now=NOW)
     assert s_notice.total > s_money.total
@@ -50,7 +48,9 @@ def test_notice_item_outranks_bigger_dollar_general_item():
 
 
 def test_weight_tuning_reorders_predictably():
-    urgent = Extraction(category=Category.rfi, deadline=(NOW + timedelta(days=1)).isoformat(), confidence=0.6)
+    urgent = Extraction(
+        category=Category.rfi, deadline=(NOW + timedelta(days=1)).isoformat(), confidence=0.6
+    )
     impactful = Extraction(category=Category.change_order, dollar_exposure=500_000, confidence=0.6)
 
     urgency_heavy = {"urgency": 0.8, "impact": 0.1, "confidence": 0.1}
@@ -66,7 +66,9 @@ def test_weight_tuning_reorders_predictably():
 
 
 def test_score_exposes_factor_breakdown():
-    ex = Extraction(category=Category.safety, dollar_exposure=10_000, confidence=0.4, blocking=["crane"])
+    ex = Extraction(
+        category=Category.safety, dollar_exposure=10_000, confidence=0.4, blocking=["crane"]
+    )
     result = score_item(ex, last_activity=NOW, now=NOW)
     f = result.factors
     assert {"urgency", "impact", "confidence", "weights", "category_weight"}.issubset(f)

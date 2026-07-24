@@ -60,7 +60,7 @@ class Connection(BaseModel):
     source_type: str
     account_ref: str = ""
     cursor: str | None = None
-    tokens: dict = Field(default_factory=dict)   # decrypted at call time by ingest
+    tokens: dict = Field(default_factory=dict)  # decrypted at call time by ingest
     scopes: list[str] = Field(default_factory=list)
 
 

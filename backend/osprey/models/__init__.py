@@ -80,10 +80,10 @@ class Category(str, Enum):
 
 
 class Bucket(str, Enum):
-    act_today = "act_today"      # 🔴
-    this_week = "this_week"      # 🟠
-    watch = "watch"             # 🟡
-    done = "done"               # cleared
+    act_today = "act_today"  # 🔴
+    this_week = "this_week"  # 🟠
+    watch = "watch"  # 🟡
+    done = "done"  # cleared
 
 
 class ActionType(str, Enum):
@@ -131,7 +131,7 @@ class User(SQLModel, table=True):
     id: str = Field(default_factory=new_id, primary_key=True)
     email: str = Field(index=True, unique=True)
     full_name: str = ""
-    password_hash: str = ""       # PBKDF2; empty for SSO-only users
+    password_hash: str = ""  # PBKDF2; empty for SSO-only users
     is_active: bool = True
     created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
 
@@ -164,13 +164,13 @@ class Connection(SQLModel, table=True):
     id: str = Field(default_factory=new_id, primary_key=True)
     org_id: str = Field(foreign_key="org.id", index=True)
     project_id: str = Field(foreign_key="project.id", index=True)
-    source_type: str                       # "outlook" | "gmail" | "procore" | "filedrop" ...
-    account_ref: str = ""                  # mailbox address / company id / label
+    source_type: str  # "outlook" | "gmail" | "procore" | "filedrop" ...
+    account_ref: str = ""  # mailbox address / company id / label
     # AES-256-GCM sealed OAuth tokens (never plaintext at rest). See security/crypto.
     encrypted_tokens: str = ""
     scopes: list = Field(default_factory=list, sa_column=Column(JSON))
     status: ConnectionStatus = ConnectionStatus.pending
-    cursor: str | None = None              # delta / history token for incremental poll
+    cursor: str | None = None  # delta / history token for incremental poll
     last_sync: datetime | None = Field(default=None, sa_column=_dt_column())
     last_error: str | None = None
     created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
@@ -202,7 +202,7 @@ class Device(SQLModel, table=True):
     id: str = Field(default_factory=new_id, primary_key=True)
     org_id: str = Field(foreign_key="org.id", index=True)
     user_id: str = Field(foreign_key="user.id", index=True)
-    platform: str = "web"                  # ios | android | web
+    platform: str = "web"  # ios | android | web
     token: str = ""
     created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
 
@@ -217,7 +217,7 @@ class ScriptTask(SQLModel, table=True):
     name: str
     source_code: str = ""
     enabled: bool = True
-    schedule_minutes: int = 0              # 0 => run on demand only
+    schedule_minutes: int = 0  # 0 => run on demand only
     timeout_seconds: int = 30
     status: ScriptStatus = ScriptStatus.idle
     last_run: datetime | None = Field(default=None, sa_column=_dt_column())
@@ -230,22 +230,20 @@ class ScriptTask(SQLModel, table=True):
 # --------------------------------------------------------------------------- #
 class Signal(SQLModel, table=True):
     __tablename__ = "signal"
-    __table_args__ = (
-        UniqueConstraint("connection_id", "external_id", name="uq_signal_dedupe"),
-    )
+    __table_args__ = (UniqueConstraint("connection_id", "external_id", name="uq_signal_dedupe"),)
     id: str = Field(default_factory=new_id, primary_key=True)
     project_id: str = Field(foreign_key="project.id", index=True)
     connection_id: str = Field(foreign_key="connection.id", index=True)
     source_type: str
     source_kind: SourceKind = SourceKind.general
-    external_id: str = Field(index=True)   # dedupe key within source
+    external_id: str = Field(index=True)  # dedupe key within source
     thread_key: str | None = Field(default=None, index=True)
     title: str = ""
-    body: str = ""                         # cleaned text
+    body: str = ""  # cleaned text
     participants: list = Field(default_factory=list, sa_column=Column(JSON))
     due_at: datetime | None = Field(default=None, sa_column=_dt_column())
-    amount: float | None = None            # $ exposure magnitude if present
-    url: str | None = None                 # deep link back to source
+    amount: float | None = None  # $ exposure magnitude if present
+    url: str | None = None  # deep link back to source
     raw: dict = Field(default_factory=dict, sa_column=Column(JSON))
     embedding: list | None = Field(default=None, sa_column=Column(JSON))
     item_id: str | None = Field(default=None, foreign_key="item.id", index=True)
@@ -313,7 +311,7 @@ class AuditLog(SQLModel, table=True):
     target: str = ""
     meta: dict = Field(default_factory=dict, sa_column=Column(JSON))
     prev_hash: str = ""
-    hash: str = ""                         # sha256(prev_hash + canonical record)
+    hash: str = ""  # sha256(prev_hash + canonical record)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
 
 

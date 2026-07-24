@@ -25,8 +25,13 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 def _out(row: AIConnection) -> AIConnectionOut:
     return AIConnectionOut(
-        id=row.id, provider=row.provider.value, label=row.label, model=row.model,
-        status=row.status.value, project_id=row.project_id, has_key=bool(row.encrypted_key),
+        id=row.id,
+        provider=row.provider.value,
+        label=row.label,
+        model=row.model,
+        status=row.status.value,
+        project_id=row.project_id,
+        has_key=bool(row.encrypted_key),
     )
 
 
@@ -53,8 +58,12 @@ async def create_ai_connection(
     session.add(row)
     await session.flush()
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="ai_connection.created", target=row.id, meta={"provider": body.provider.value},
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="ai_connection.created",
+        target=row.id,
+        meta={"provider": body.provider.value},
     )
     return _out(row)
 
@@ -65,8 +74,10 @@ async def list_ai_connections(
     principal: Principal = Depends(current_principal),
 ) -> list[AIConnectionOut]:
     rows = (
-        await session.execute(select(AIConnection).where(AIConnection.org_id == principal.org_id))
-    ).scalars().all()
+        (await session.execute(select(AIConnection).where(AIConnection.org_id == principal.org_id)))
+        .scalars()
+        .all()
+    )
     return [_out(r) for r in rows]
 
 
@@ -94,9 +105,11 @@ async def sift(
         max_signals=body.max_signals,
     )
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="ai.sift", target=project.id, meta={"findings": len(findings)},
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="ai.sift",
+        target=project.id,
+        meta={"findings": len(findings)},
     )
-    return SiftResponse(
-        findings=[SiftFindingOut(**f) for f in findings], scanned_signals=scanned
-    )
+    return SiftResponse(findings=[SiftFindingOut(**f) for f in findings], scanned_signals=scanned)

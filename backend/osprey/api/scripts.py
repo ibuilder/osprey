@@ -19,8 +19,12 @@ router = APIRouter(tags=["scripts"])
 
 def _out(row: ScriptTask) -> ScriptOut:
     return ScriptOut(
-        id=row.id, name=row.name, enabled=row.enabled, schedule_minutes=row.schedule_minutes,
-        status=row.status.value, last_run=row.last_run.isoformat() if row.last_run else None,
+        id=row.id,
+        name=row.name,
+        enabled=row.enabled,
+        schedule_minutes=row.schedule_minutes,
+        status=row.status.value,
+        last_run=row.last_run.isoformat() if row.last_run else None,
         last_result=row.last_result,
     )
 
@@ -47,8 +51,12 @@ async def create_script(
     session.add(row)
     await session.flush()
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="script.created", target=row.id, meta={"name": row.name},
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="script.created",
+        target=row.id,
+        meta={"name": row.name},
     )
     return _out(row)
 
@@ -60,8 +68,10 @@ async def list_scripts(
     principal: Principal = Depends(current_principal),
 ) -> list[ScriptOut]:
     rows = (
-        await session.execute(select(ScriptTask).where(ScriptTask.project_id == project.id))
-    ).scalars().all()
+        (await session.execute(select(ScriptTask).where(ScriptTask.project_id == project.id)))
+        .scalars()
+        .all()
+    )
     return [_out(r) for r in rows]
 
 
@@ -83,8 +93,12 @@ async def run_script_now(
     row = await _load(session, script_id, principal.org_id)
     result = await run_task(session, row)
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="script.run", target=row.id, meta={"status": result["status"]},
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="script.run",
+        target=row.id,
+        meta={"status": result["status"]},
     )
     return ScriptRunResult(**result)
 

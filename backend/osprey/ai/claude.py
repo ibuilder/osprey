@@ -60,8 +60,14 @@ _TOOL = {
             "category": {
                 "type": "string",
                 "enum": [
-                    "rfi", "change_order", "submittal", "invoice", "safety",
-                    "schedule", "contractual_notice", "general",
+                    "rfi",
+                    "change_order",
+                    "submittal",
+                    "invoice",
+                    "safety",
+                    "schedule",
+                    "contractual_notice",
+                    "general",
                 ],
             },
             "summary": {"type": "string"},

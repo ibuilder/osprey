@@ -17,7 +17,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest, session: AsyncSession = Depends(db_session)) -> TokenResponse:
+async def register(
+    body: RegisterRequest, session: AsyncSession = Depends(db_session)
+) -> TokenResponse:
     existing = (
         await session.execute(select(User).where(func.lower(User.email) == body.email.lower()))
     ).scalar_one_or_none()
@@ -39,7 +41,9 @@ async def register(body: RegisterRequest, session: AsyncSession = Depends(db_ses
     membership = Membership(org_id=org.id, user_id=user.id, role=Role.owner)
     session.add(membership)
 
-    await audit.record(session, org_id=org.id, actor=user.email, action="org.created", target=org.id)
+    await audit.record(
+        session, org_id=org.id, actor=user.email, action="org.created", target=org.id
+    )
     await session.flush()
 
     principal = Principal(user_id=user.id, org_id=org.id, role=Role.owner, email=user.email)
@@ -62,8 +66,10 @@ async def login(body: LoginRequest, session: AsyncSession = Depends(db_session))
         raise HTTPException(status.HTTP_403_FORBIDDEN, "user disabled")
 
     membership = (
-        await session.execute(select(Membership).where(Membership.user_id == user.id))
-    ).scalars().first()
+        (await session.execute(select(Membership).where(Membership.user_id == user.id)))
+        .scalars()
+        .first()
+    )
     if membership is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "no org membership")
 

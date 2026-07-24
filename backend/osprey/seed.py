@@ -144,8 +144,11 @@ async def run_seed(*, db_path: str = "./osprey-demo.db", out_dir: str = "./demo"
         for source_type, events in _events().items():
             connector = get_connector(source_type)
             conn = Connection(
-                org_id=org.id, project_id=project.id, source_type=source_type,
-                account_ref=f"{source_type}@demo", status=ConnectionStatus.active,
+                org_id=org.id,
+                project_id=project.id,
+                source_type=source_type,
+                account_ref=f"{source_type}@demo",
+                status=ConnectionStatus.active,
             )
             session.add(conn)
             await session.flush()
@@ -183,7 +186,12 @@ def main() -> None:
 
     result = asyncio.run(run_seed())
     payload = result["payload"]
-    label = {"act_today": "[ACT TODAY]", "this_week": "[THIS WEEK]", "watch": "[WATCH]", "done": "[DONE]"}
+    label = {
+        "act_today": "[ACT TODAY]",
+        "this_week": "[THIS WEEK]",
+        "watch": "[WATCH]",
+        "done": "[DONE]",
+    }
     print("\n  Osprey demo - Tower B")
     print("  " + "-" * 60)
     print(f"  Ingested {result['signals']} signals across 4 sources into {result['items']} items.")

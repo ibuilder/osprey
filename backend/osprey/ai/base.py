@@ -23,12 +23,12 @@ class Extraction(BaseModel):
 
     category: Category = Category.general
     summary: str = ""
-    deadline: str | None = None            # ISO8601 or null
+    deadline: str | None = None  # ISO8601 or null
     dollar_exposure: float | None = None
-    notice_deadline: bool = False          # contractual notice — weighted highest
+    notice_deadline: bool = False  # contractual notice — weighted highest
     blocking: list[str] = Field(default_factory=list)
     recommended_action: str = ""
-    confidence: float = 0.5                # 0..1 extraction certainty
+    confidence: float = 0.5  # 0..1 extraction certainty
     citations: list[Citation] = Field(default_factory=list)
 
 
@@ -36,7 +36,7 @@ class ExtractionInput(BaseModel):
     """What the provider is asked to extract over (one Item's signals)."""
 
     item_title: str
-    signals: list[dict]                    # [{id, title, body, due_at, amount, url, participants}]
+    signals: list[dict]  # [{id, title, body, due_at, amount, url, participants}]
 
 
 class SiftFinding(BaseModel):
@@ -55,7 +55,7 @@ class SiftFinding(BaseModel):
 
 class SiftInput(BaseModel):
     instruction: str
-    signals: list[dict]            # [{id, title, body, ...}]
+    signals: list[dict]  # [{id, title, body, ...}]
 
 
 def _keyword_sift(payload: SiftInput) -> list[SiftFinding]:
@@ -63,7 +63,20 @@ def _keyword_sift(payload: SiftInput) -> list[SiftFinding]:
     import re
 
     terms = set(re.findall(r"[a-z0-9]{3,}", payload.instruction.lower()))
-    stop = {"the", "and", "any", "all", "for", "with", "that", "find", "show", "list", "get", "flag"}
+    stop = {
+        "the",
+        "and",
+        "any",
+        "all",
+        "for",
+        "with",
+        "that",
+        "find",
+        "show",
+        "list",
+        "get",
+        "flag",
+    }
     terms -= stop
     matched: list[dict] = []
     for s in payload.signals:

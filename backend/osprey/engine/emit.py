@@ -20,12 +20,16 @@ async def get_or_create_internal_connection(
     session: AsyncSession, *, org_id: str, project_id: str, source_type: str, account_ref: str = ""
 ) -> Connection:
     row = (
-        await session.execute(
-            select(Connection).where(
-                Connection.project_id == project_id, Connection.source_type == source_type
+        (
+            await session.execute(
+                select(Connection).where(
+                    Connection.project_id == project_id, Connection.source_type == source_type
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if row is not None:
         return row
     row = Connection(
@@ -54,6 +58,10 @@ async def emit_events(
         return []
     connector = get_connector(source_type)
     connection = await get_or_create_internal_connection(
-        session, org_id=org_id, project_id=project_id, source_type=source_type, account_ref=account_ref
+        session,
+        org_id=org_id,
+        project_id=project_id,
+        source_type=source_type,
+        account_ref=account_ref,
     )
     return await ingest_events(session, connector, connection, events)

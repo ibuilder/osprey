@@ -19,16 +19,22 @@ from ..models import Connection, Signal
 log = logging.getLogger("osprey.ingest")
 
 
-async def _existing_external_ids(session: AsyncSession, connection_id: str, ids: list[str]) -> set[str]:
+async def _existing_external_ids(
+    session: AsyncSession, connection_id: str, ids: list[str]
+) -> set[str]:
     if not ids:
         return set()
     rows = (
-        await session.execute(
-            select(Signal.external_id).where(
-                Signal.connection_id == connection_id, Signal.external_id.in_(ids)
+        (
+            await session.execute(
+                select(Signal.external_id).where(
+                    Signal.connection_id == connection_id, Signal.external_id.in_(ids)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return set(rows)
 
 

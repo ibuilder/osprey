@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-GOOD_SCRIPT = '''
+GOOD_SCRIPT = """
 # A user script: emit a couple of signals Osprey will score and rank.
 osprey.log(f"running for project {ctx['project_name']}")
 osprey.emit_signal(
@@ -14,18 +14,18 @@ osprey.emit_signal(
     external_id="permit-check-1",
 )
 osprey.emit_signal("Second finding", "A lower-priority note from the script.")
-'''
+"""
 
-BAD_SCRIPT = '''
+BAD_SCRIPT = """
 osprey.emit_signal("before the boom", "this one still lands")
 raise ValueError("intentional failure")
-'''
+"""
 
-SECRET_PROBE = '''
+SECRET_PROBE = """
 import os
 osprey.log("SECRET=" + os.environ.get("OSPREY_ENCRYPTION_KEY", "<absent>"))
 osprey.log("DB=" + os.environ.get("OSPREY_DATABASE_URL", "<absent>"))
-'''
+"""
 
 
 async def _project(client) -> str:
@@ -81,8 +81,8 @@ async def test_script_cannot_see_server_secrets(auth_client):
 
     result = (await client.post(f"/scripts/{script_id}/run")).json()
     joined = " ".join(result["logs"])
-    assert "SECRET=<absent>" in joined       # encryption key scrubbed from the sandbox
-    assert "DB=<absent>" in joined           # database URL scrubbed
+    assert "SECRET=<absent>" in joined  # encryption key scrubbed from the sandbox
+    assert "DB=<absent>" in joined  # database URL scrubbed
 
 
 async def test_script_toggle_and_list(auth_client):

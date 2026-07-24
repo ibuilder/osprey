@@ -26,14 +26,18 @@ class ResilientProvider(LLMProvider):
         try:
             return await self._primary.extract(payload)
         except Exception as exc:  # noqa: BLE001 - deliberate: never fail the pipeline
-            log.warning("AI provider '%s' failed (%s); using deterministic fallback", self.name, exc)
+            log.warning(
+                "AI provider '%s' failed (%s); using deterministic fallback", self.name, exc
+            )
             return await self._fallback.extract(payload)
 
     async def sift(self, payload):
         try:
             return await self._primary.sift(payload)
         except Exception as exc:  # noqa: BLE001
-            log.warning("AI sift via '%s' failed (%s); using deterministic fallback", self.name, exc)
+            log.warning(
+                "AI sift via '%s' failed (%s); using deterministic fallback", self.name, exc
+            )
             return await self._fallback.sift(payload)
 
 
@@ -59,7 +63,9 @@ def get_provider() -> LLMProvider:
     return _build()
 
 
-def provider_from_connection(provider: str, *, api_key: str, model: str, base_url: str | None = None) -> LLMProvider:
+def provider_from_connection(
+    provider: str, *, api_key: str, model: str, base_url: str | None = None
+) -> LLMProvider:
     """Build a provider from a user's AIConnection (bring-your-own key).
 
     Falls back to the deterministic provider if the requested backend can't be
@@ -79,7 +85,9 @@ def provider_from_connection(provider: str, *, api_key: str, model: str, base_ur
         if provider == "openai":
             from .openai_provider import OpenAIProvider
 
-            return ResilientProvider(OpenAIProvider(api_key=api_key, model=model or "gpt-4o", base_url=base_url))
+            return ResilientProvider(
+                OpenAIProvider(api_key=api_key, model=model or "gpt-4o", base_url=base_url)
+            )
         if provider == "ollama":
             from .ollama import OllamaProvider
 
@@ -90,5 +98,7 @@ def provider_from_connection(provider: str, *, api_key: str, model: str, base_ur
                 inst2._host = base_url.rstrip("/")  # type: ignore[attr-defined]
             return ResilientProvider(inst2)
     except Exception as exc:  # noqa: BLE001
-        log.warning("could not build provider '%s' from connection (%s); using default", provider, exc)
+        log.warning(
+            "could not build provider '%s' from connection (%s); using default", provider, exc
+        )
     return DeterministicProvider()

@@ -39,10 +39,21 @@ async def test_notify_critical_pushes_to_devices(session):
     org = Org(name="Push Co")
     session.add(org)
     await session.flush()
-    session.add(Device(org_id=org.id, user_id="u1", platform="android", token="fcm-1", created_at=utcnow()))
+    session.add(
+        Device(org_id=org.id, user_id="u1", platform="android", token="fcm-1", created_at=utcnow())
+    )
     await session.flush()
 
-    payload = {"items": [{"item_id": "1", "bucket": "act_today", "what": "Notice of delay", "recommended_action": "Respond"}]}
+    payload = {
+        "items": [
+            {
+                "item_id": "1",
+                "bucket": "act_today",
+                "what": "Notice of delay",
+                "recommended_action": "Respond",
+            }
+        ]
+    }
     sent = await notify_critical(session, org_id=org.id, payload=payload)
     assert sent == 1
 
@@ -63,7 +74,7 @@ def test_apns_payload_shape():
     payload = apns_payload(PushMessage("🔴 Notice", "Respond now", {"item_id": "i1", "score": 88}))
     assert payload["aps"]["alert"] == {"title": "🔴 Notice", "body": "Respond now"}
     assert payload["aps"]["sound"] == "default"
-    assert payload["item_id"] == "i1"          # custom data lifted to top level
+    assert payload["item_id"] == "i1"  # custom data lifted to top level
 
 
 def test_fcm_message_shape():
@@ -72,13 +83,13 @@ def test_fcm_message_shape():
     msg = fcm_message("dev-token", PushMessage("Title", "Body", {"item_id": "i1", "score": 88}))
     assert msg["message"]["token"] == "dev-token"
     assert msg["message"]["notification"] == {"title": "Title", "body": "Body"}
-    assert msg["message"]["data"] == {"item_id": "i1", "score": "88"}   # data must be strings
+    assert msg["message"]["data"] == {"item_id": "i1", "score": "88"}  # data must be strings
 
 
 def test_build_sender_defaults_to_logging():
     from osprey.engine.push_senders import build_sender
 
-    assert isinstance(build_sender(), LoggingPushSender)   # unconfigured => logging
+    assert isinstance(build_sender(), LoggingPushSender)  # unconfigured => logging
 
 
 async def test_composite_routes_by_platform():
@@ -95,12 +106,18 @@ async def test_composite_routes_by_platform():
 
     ios, android, web = Recorder("ios"), Recorder("android"), Recorder("web")
     composite = CompositePushSender(ios=ios, android=android, web=web)
-    await composite.send(Device(org_id="o", user_id="u", platform="ios", token="a"), PushMessage("t", "b", {}))
-    await composite.send(Device(org_id="o", user_id="u", platform="android", token="b"), PushMessage("t", "b", {}))
-    await composite.send(Device(org_id="o", user_id="u", platform="web", token="c"), PushMessage("t", "b", {}))
+    await composite.send(
+        Device(org_id="o", user_id="u", platform="ios", token="a"), PushMessage("t", "b", {})
+    )
+    await composite.send(
+        Device(org_id="o", user_id="u", platform="android", token="b"), PushMessage("t", "b", {})
+    )
+    await composite.send(
+        Device(org_id="o", user_id="u", platform="web", token="c"), PushMessage("t", "b", {})
+    )
     assert ios.hits == 1
     assert android.hits == 1
-    assert web.hits == 1            # web routes to the web sender
+    assert web.hits == 1  # web routes to the web sender
 
 
 # ---- Web Push (VAPID) ------------------------------------------------------ #

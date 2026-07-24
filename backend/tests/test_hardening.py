@@ -28,10 +28,10 @@ async def test_rate_limiter_bursts_then_throttles():
         clock.advance(d)
 
     rl = RateLimiter(rate_per_sec=10, burst=2, now=clock.now, sleep=fake_sleep)
-    await rl.acquire()   # burst token 1 — no wait
-    await rl.acquire()   # burst token 2 — no wait
+    await rl.acquire()  # burst token 1 — no wait
+    await rl.acquire()  # burst token 2 — no wait
     assert sleeps == []
-    await rl.acquire()   # empty bucket — must wait ~1/10s for a refill
+    await rl.acquire()  # empty bucket — must wait ~1/10s for a refill
     assert sleeps and sleeps[0] == pytest.approx(0.1, rel=0.05)
 
 
@@ -65,12 +65,17 @@ async def test_renew_subscriptions_skips_non_subscription_sources(session):
     project = Project(org_id=org.id, name="P")
     session.add(project)
     await session.flush()
-    session.add(Connection(
-        org_id=org.id, project_id=project.id, source_type="filedrop",
-        account_ref="drop", status=ConnectionStatus.active,
-    ))
+    session.add(
+        Connection(
+            org_id=org.id,
+            project_id=project.id,
+            source_type="filedrop",
+            account_ref="drop",
+            status=ConnectionStatus.active,
+        )
+    )
     await session.flush()
 
     result = await renew_subscriptions(session, notify_base="https://osprey.example.com")
     assert result["checked"] == 1
-    assert result["renewed"] == 0   # filedrop has no subscriptions
+    assert result["renewed"] == 0  # filedrop has no subscriptions

@@ -22,7 +22,7 @@ async def test_admin_stats_and_health(auth_client):
 
 async def test_admin_audit_chain_intact(auth_client):
     client, _ = auth_client
-    await client.post("/projects", json={"name": "P"})   # generates audit entries
+    await client.post("/projects", json={"name": "P"})  # generates audit entries
     verify = (await client.get("/admin/audit/verify")).json()
     assert verify["audit_chain_intact"] is True
 

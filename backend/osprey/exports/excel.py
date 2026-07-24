@@ -62,7 +62,12 @@ def hotlist_to_xlsx(payload: dict[str, Any], *, project_name: str = "Project") -
         _header(ws[col], ws[col].value)
     buckets = payload.get("buckets", {})
     order = ["act_today", "this_week", "watch", "done"]
-    labels = {"act_today": "🔴 Act today", "this_week": "🟠 This week", "watch": "🟡 Watch", "done": "✅ Done"}
+    labels = {
+        "act_today": "🔴 Act today",
+        "this_week": "🟠 This week",
+        "watch": "🟡 Watch",
+        "done": "✅ Done",
+    }
     row = 10
     for key in order:
         b = buckets.get(key, {"count": 0, "exposure": 0.0})
@@ -80,9 +85,17 @@ def hotlist_to_xlsx(payload: dict[str, Any], *, project_name: str = "Project") -
     # ---- Hotlist ----------------------------------------------------------- #
     hs = wb.create_sheet("Hotlist")
     cols = [
-        ("Rank", 6), ("Bucket", 14), ("What", 40), ("Category", 16), ("Why", 50),
-        ("Owner", 16), ("Due", 14), ("$ Exposure", 14), ("Recommended action", 46),
-        ("Score", 8), ("Source", 40),
+        ("Rank", 6),
+        ("Bucket", 14),
+        ("What", 40),
+        ("Category", 16),
+        ("Why", 50),
+        ("Owner", 16),
+        ("Due", 14),
+        ("$ Exposure", 14),
+        ("Recommended action", 46),
+        ("Score", 8),
+        ("Source", 40),
     ]
     for idx, (name, width) in enumerate(cols, start=1):
         _header(hs.cell(row=1, column=idx), name)
@@ -118,7 +131,7 @@ def hotlist_to_xlsx(payload: dict[str, Any], *, project_name: str = "Project") -
         src_cell = hs.cell(row=r, column=11)
         if sources:
             first = sources[0]
-            label = f"{first.get('source_type','')}: {first.get('title','')}"[:80]
+            label = f"{first.get('source_type', '')}: {first.get('title', '')}"[:80]
             src_cell.value = label
             if first.get("url"):
                 src_cell.hyperlink = first["url"]

@@ -25,7 +25,9 @@ _NONCE_LEN = 12
 
 
 def _data_key(key_material: str | None = None) -> bytes:
-    material = (key_material if key_material is not None else settings.encryption_key).encode("utf-8")
+    material = (key_material if key_material is not None else settings.encryption_key).encode(
+        "utf-8"
+    )
     return hashlib.sha256(material).digest()  # 32 bytes -> AES-256
 
 

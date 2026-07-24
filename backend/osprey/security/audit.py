@@ -24,9 +24,17 @@ def _ts(created_at: datetime) -> str:
     return created_at.replace(tzinfo=None).isoformat()
 
 
-def _canonical(actor: str, action: str, target: str, meta: dict[str, Any], created_at: datetime) -> str:
+def _canonical(
+    actor: str, action: str, target: str, meta: dict[str, Any], created_at: datetime
+) -> str:
     return json.dumps(
-        {"actor": actor, "action": action, "target": target, "meta": meta, "created_at": _ts(created_at)},
+        {
+            "actor": actor,
+            "action": action,
+            "target": target,
+            "meta": meta,
+            "created_at": _ts(created_at),
+        },
         separators=(",", ":"),
         sort_keys=True,
     )
@@ -67,10 +75,16 @@ async def record(
 
 async def verify_chain(session: AsyncSession, org_id: str) -> bool:
     rows = (
-        await session.execute(
-            select(AuditLog).where(AuditLog.org_id == org_id).order_by(AuditLog.created_at.asc())
+        (
+            await session.execute(
+                select(AuditLog)
+                .where(AuditLog.org_id == org_id)
+                .order_by(AuditLog.created_at.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     prev_hash = ""
     for row in rows:
         canonical = _canonical(row.actor, row.action, row.target, row.meta, row.created_at)

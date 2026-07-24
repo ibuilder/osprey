@@ -36,7 +36,7 @@ _ERR = "OSPREY_ERR::"
 
 # The harness runs inside the subprocess. It provides the `osprey` object to the
 # user's script, execs the script, and streams emitted records over stdout.
-_HARNESS = r'''
+_HARNESS = r"""
 import json, sys, hashlib
 
 class _Osprey:
@@ -79,12 +79,12 @@ def _main():
         sys.stdout.flush()
 
 _main()
-'''
+"""
 
 
 @dataclass
 class RunOutput:
-    status: str                       # "ok" | "error" | "timeout"
+    status: str  # "ok" | "error" | "timeout"
     events: list[RawEvent] = field(default_factory=list)
     logs: list[str] = field(default_factory=list)
     error: str | None = None
@@ -101,9 +101,7 @@ def _scrubbed_env() -> dict[str, str]:
     return keep
 
 
-def run_source(
-    source_code: str, *, ctx: dict, timeout_seconds: int = 30
-) -> RunOutput:
+def run_source(source_code: str, *, ctx: dict, timeout_seconds: int = 30) -> RunOutput:
     timeout = max(1, min(timeout_seconds, settings.scripts_max_timeout_seconds))
     with tempfile.TemporaryDirectory(prefix="osprey-script-") as tmp:
         user_path = os.path.join(tmp, "user_script.py")
@@ -114,14 +112,20 @@ def run_source(
             fh.write(_HARNESS)
 
         cmd = [sys.executable, "-I", harness_path, user_path, json.dumps(ctx, default=str)]
-        sandbox = settings.__dict__.get("script_sandbox_cmd") or os.environ.get("OSPREY_SCRIPT_SANDBOX_CMD")
+        sandbox = settings.__dict__.get("script_sandbox_cmd") or os.environ.get(
+            "OSPREY_SCRIPT_SANDBOX_CMD"
+        )
         if sandbox:
             cmd = sandbox.split() + cmd
 
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout,
-                env=_scrubbed_env(), cwd=tmp,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=_scrubbed_env(),
+                cwd=tmp,
             )
         except subprocess.TimeoutExpired:
             return RunOutput(status="timeout", error=f"script exceeded {timeout}s timeout")
@@ -136,16 +140,16 @@ def _parse_output(stdout: str, stderr: str, returncode: int) -> RunOutput:
     for line in stdout.splitlines():
         if line.startswith(_EMIT):
             try:
-                data = json.loads(line[len(_EMIT):])
+                data = json.loads(line[len(_EMIT) :])
                 events.append(_to_event(data))
             except Exception as exc:  # noqa: BLE001
                 logs.append(f"bad emit: {exc}")
         elif line.startswith(_LOG):
             with contextlib.suppress(Exception):
-                logs.append(json.loads(line[len(_LOG):]).get("message", ""))
+                logs.append(json.loads(line[len(_LOG) :]).get("message", ""))
         elif line.startswith(_ERR):
             try:
-                payload = json.loads(line[len(_ERR):])
+                payload = json.loads(line[len(_ERR) :])
                 error = payload.get("error")
                 logs.append(payload.get("trace", ""))
             except Exception:  # noqa: BLE001

@@ -85,9 +85,7 @@ class OutlookConnector(Connector):
             return ""
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    f"{GRAPH}/me", headers={"Authorization": f"Bearer {token}"}
-                )
+                resp = await client.get(f"{GRAPH}/me", headers={"Authorization": f"Bearer {token}"})
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get("userPrincipalName") or data.get("mail") or ""
@@ -106,7 +104,10 @@ class OutlookConnector(Connector):
         if refresh:
             data |= {"grant_type": "refresh_token", "refresh_token": refresh}
         else:
-            data |= {"grant_type": "client_credentials", "scope": "https://graph.microsoft.com/.default"}
+            data |= {
+                "grant_type": "client_credentials",
+                "scope": "https://graph.microsoft.com/.default",
+            }
         url = TOKEN_URL.format(tenant=settings.msgraph_tenant_id or "common")
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(url, data=data)
@@ -117,7 +118,10 @@ class OutlookConnector(Connector):
         token = await self._access_token(conn)
         headers = {"Authorization": f"Bearer {token}"}
         # Use the stored delta link if present, else start a delta enumeration.
-        url = conn.cursor or f"{GRAPH}/me/mailFolders/inbox/messages/delta?$select=subject,from,toRecipients,ccRecipients,body,bodyPreview,conversationId,receivedDateTime,webLink,internetMessageId"
+        url = (
+            conn.cursor
+            or f"{GRAPH}/me/mailFolders/inbox/messages/delta?$select=subject,from,toRecipients,ccRecipients,body,bodyPreview,conversationId,receivedDateTime,webLink,internetMessageId"
+        )
         async with httpx.AsyncClient(timeout=60, headers=headers) as client:
             while url:
                 resp = await client.get(url)

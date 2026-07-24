@@ -51,7 +51,7 @@ class ConnectionCreate(BaseModel):
     project_id: str
     source_type: str
     account_ref: str = ""
-    tokens: dict = Field(default_factory=dict)   # sealed at rest immediately
+    tokens: dict = Field(default_factory=dict)  # sealed at rest immediately
     scopes: list[str] = Field(default_factory=list)
 
 
@@ -68,17 +68,17 @@ class ConnectionOut(BaseModel):
 class ForwardEmail(BaseModel):
     """Forward-To / File-Drop ingestion payload."""
 
-    raw: str                       # RFC822 email or CSV text
-    kind: str = "email"            # email | csv | doc
+    raw: str  # RFC822 email or CSV text
+    kind: str = "email"  # email | csv | doc
     external_id: str | None = None
     source_kind: str = "general"
 
 
 class SourceInfo(BaseModel):
     source_type: str
-    auth: str                      # "oauth" | "forward" | "internal"
+    auth: str  # "oauth" | "forward" | "internal"
     scopes: list[str] = []
-    configured: bool = True        # OAuth app credentials present on server
+    configured: bool = True  # OAuth app credentials present on server
 
 
 class ExchangeRequest(BaseModel):
@@ -92,7 +92,7 @@ class AIConnectionCreate(BaseModel):
     provider: AIProvider = AIProvider.claude
     label: str = ""
     model: str = ""
-    api_key: str = ""              # sealed at rest immediately; never returned
+    api_key: str = ""  # sealed at rest immediately; never returned
     base_url: str | None = None
     project_id: str | None = None
 
@@ -109,7 +109,7 @@ class AIConnectionOut(BaseModel):
 
 class SiftRequest(BaseModel):
     instruction: str = Field(min_length=3)
-    ai_connection_id: str | None = None    # None => use server default provider
+    ai_connection_id: str | None = None  # None => use server default provider
     lookback_days: int = 30
     max_signals: int = 200
 

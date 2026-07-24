@@ -25,9 +25,15 @@ async def create_project(
     session.add(project)
     await session.flush()
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email, action="project.created", target=project.id
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="project.created",
+        target=project.id,
     )
-    return ProjectOut(id=project.id, name=project.name, org_id=project.org_id, weights=project.weights)
+    return ProjectOut(
+        id=project.id, name=project.name, org_id=project.org_id, weights=project.weights
+    )
 
 
 @router.get("", response_model=list[ProjectOut])
@@ -36,14 +42,18 @@ async def list_projects(
     principal: Principal = Depends(current_principal),
 ) -> list[ProjectOut]:
     rows = (
-        await session.execute(select(Project).where(Project.org_id == principal.org_id))
-    ).scalars().all()
+        (await session.execute(select(Project).where(Project.org_id == principal.org_id)))
+        .scalars()
+        .all()
+    )
     return [ProjectOut(id=p.id, name=p.name, org_id=p.org_id, weights=p.weights) for p in rows]
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
 async def get_project(project: Project = Depends(project_in_org)) -> ProjectOut:
-    return ProjectOut(id=project.id, name=project.name, org_id=project.org_id, weights=project.weights)
+    return ProjectOut(
+        id=project.id, name=project.name, org_id=project.org_id, weights=project.weights
+    )
 
 
 @router.put("/{project_id}/weights", response_model=ProjectOut)
@@ -61,8 +71,14 @@ async def set_weights(
     project.weights = weights
     session.add(project)
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="project.weights_updated", target=project.id, meta=weights,
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="project.weights_updated",
+        target=project.id,
+        meta=weights,
     )
     await session.flush()
-    return ProjectOut(id=project.id, name=project.name, org_id=project.org_id, weights=project.weights)
+    return ProjectOut(
+        id=project.id, name=project.name, org_id=project.org_id, weights=project.weights
+    )

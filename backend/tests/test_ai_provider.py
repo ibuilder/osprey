@@ -45,7 +45,9 @@ async def test_resilient_sift_falls_back_to_deterministic():
 
 async def test_deterministic_sift_no_match_is_empty():
     findings = await DeterministicProvider().sift(
-        SiftInput(instruction="zzz nonexistent", signals=[{"id": "1", "title": "hi", "body": "there"}])
+        SiftInput(
+            instruction="zzz nonexistent", signals=[{"id": "1", "title": "hi", "body": "there"}]
+        )
     )
     assert findings == []
 
@@ -61,7 +63,9 @@ def test_openai_function_schemas_wellformed():
 
     assert op._EXTRACT_FN["function"]["name"] == "record_item"
     assert op._SIFT_FN["function"]["name"] == "report_findings"
-    sift_props = op._SIFT_FN["function"]["parameters"]["properties"]["findings"]["items"]["properties"]
+    sift_props = op._SIFT_FN["function"]["parameters"]["properties"]["findings"]["items"][
+        "properties"
+    ]
     assert {"title", "matched_signal_ids", "confidence"} <= set(sift_props)
 
 
@@ -71,6 +75,8 @@ async def test_provider_from_connection_openai_falls_back_offline():
 
     provider = provider_from_connection("openai", api_key="sk-x", model="gpt-4o")
     findings = await provider.sift(
-        SiftInput(instruction="damages", signals=[{"id": "1", "title": "damages clause", "body": "x"}])
+        SiftInput(
+            instruction="damages", signals=[{"id": "1", "title": "damages clause", "body": "x"}]
+        )
     )
-    assert findings and "1" in findings[0].matched_signal_ids   # deterministic fallback works
+    assert findings and "1" in findings[0].matched_signal_ids  # deterministic fallback works

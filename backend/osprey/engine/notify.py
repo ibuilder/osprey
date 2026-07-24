@@ -51,14 +51,14 @@ def critical_items(payload: dict) -> list[dict]:
     return [it for it in payload.get("items", []) if it.get("bucket") == "act_today"]
 
 
-async def notify_critical(session: AsyncSession, *, org_id: str, payload: dict, limit: int = 5) -> int:
+async def notify_critical(
+    session: AsyncSession, *, org_id: str, payload: dict, limit: int = 5
+) -> int:
     """Push each critical item to every device in the org. Returns pushes sent."""
     items = critical_items(payload)[:limit]
     if not items:
         return 0
-    devices = (
-        await session.execute(select(Device).where(Device.org_id == org_id))
-    ).scalars().all()
+    devices = (await session.execute(select(Device).where(Device.org_id == org_id))).scalars().all()
     sent = 0
     for item in items:
         msg = PushMessage(

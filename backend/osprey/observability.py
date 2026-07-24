@@ -32,10 +32,10 @@ def setup_observability(app) -> bool:
         log.warning("OTel enabled but instrumentation libs missing (%s); skipping", exc)
         return False
 
-    provider = TracerProvider(resource=Resource.create({"service.name": settings.otel_service_name}))
-    exporter = OTLPSpanExporter(
-        endpoint=settings.otel_exporter_otlp_endpoint or None
+    provider = TracerProvider(
+        resource=Resource.create({"service.name": settings.otel_service_name})
     )
+    exporter = OTLPSpanExporter(endpoint=settings.otel_exporter_otlp_endpoint or None)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
 

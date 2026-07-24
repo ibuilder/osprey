@@ -62,7 +62,9 @@ async def list_sources(_: Principal = Depends(current_principal)) -> list[Source
         out.append(
             SourceInfo(
                 source_type=source_type,
-                auth=("oauth" if spec else ("forward" if connector.supports_webhooks else "internal")),
+                auth=(
+                    "oauth" if spec else ("forward" if connector.supports_webhooks else "internal")
+                ),
                 scopes=list(spec.scopes) if spec else [],
                 configured=bool(client_id) if spec else True,
             )
@@ -89,7 +91,9 @@ async def authorize(
     connector = get_connector(body.source_type)
     spec = connector.oauth_spec()
     if spec is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{body.source_type} is not an OAuth source")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"{body.source_type} is not an OAuth source"
+        )
     client_id, _ = connector.client_credentials()
     if not client_id:
         raise HTTPException(
@@ -111,7 +115,11 @@ async def authorize(
         }
     )
     url = build_authorize_url(
-        spec, client_id=client_id, redirect_uri=body.redirect_uri, state=state, code_challenge=challenge
+        spec,
+        client_id=client_id,
+        redirect_uri=body.redirect_uri,
+        state=state,
+        code_challenge=challenge,
     )
     return AuthorizeChallenge(authorize_url=url, state=state)
 
@@ -149,8 +157,12 @@ async def exchange(
     session.add(row)
     await session.flush()
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="connection.oauth_connected", target=row.id, meta={"source_type": source_type},
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="connection.oauth_connected",
+        target=row.id,
+        meta={"source_type": source_type},
     )
     return _out(row)
 
@@ -177,8 +189,12 @@ async def create_connection(
     session.add(row)
     await session.flush()
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="connection.created", target=row.id, meta={"source_type": row.source_type},
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="connection.created",
+        target=row.id,
+        meta={"source_type": row.source_type},
     )
     return _out(row)
 
@@ -214,7 +230,9 @@ async def forward_to_ingest(
     row = await _load_connection(session, connection_id, principal.org_id)
     connector = get_connector(row.source_type)
     if not connector.supports_webhooks:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{row.source_type} has no forward-to path")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"{row.source_type} has no forward-to path"
+        )
 
     payload = {
         "kind": body.kind,
@@ -225,8 +243,12 @@ async def forward_to_ingest(
     events = await collect_webhook(connector, payload)
     created = await ingest_events(session, connector, row, events)
     await audit.record(
-        session, org_id=principal.org_id, actor=principal.email,
-        action="ingest.forward", target=row.id, meta={"parsed": len(events), "created": len(created)},
+        session,
+        org_id=principal.org_id,
+        actor=principal.email,
+        action="ingest.forward",
+        target=row.id,
+        meta={"parsed": len(events), "created": len(created)},
     )
     return {"parsed": len(events), "created": len(created), "signal_ids": [s.id for s in created]}
 

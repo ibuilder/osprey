@@ -55,7 +55,9 @@ async def hotlist_ws(websocket: WebSocket, project_id: str, token: str = "") -> 
 
     await websocket.accept()
     queue = hub.subscribe(project_id)
-    await websocket.send_json({"type": "connected", "project_id": project_id, "org_id": principal.org_id})
+    await websocket.send_json(
+        {"type": "connected", "project_id": project_id, "org_id": principal.org_id}
+    )
     try:
         while True:
             payload = await queue.get()

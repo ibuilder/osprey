@@ -29,8 +29,10 @@ async def connections_health(
     principal: Principal = Depends(require_role(Role.admin)),
 ) -> list[dict]:
     rows = (
-        await session.execute(select(Connection).where(Connection.org_id == principal.org_id))
-    ).scalars().all()
+        (await session.execute(select(Connection).where(Connection.org_id == principal.org_id)))
+        .scalars()
+        .all()
+    )
     return [
         {
             "id": r.id,
@@ -67,8 +69,8 @@ async def stats(
         ).scalar_one()
 
     project_ids = (
-        await session.execute(select(Project.id).where(Project.org_id == org_id))
-    ).scalars().all()
+        (await session.execute(select(Project.id).where(Project.org_id == org_id))).scalars().all()
+    )
     return {
         "org_id": org_id,
         "projects": len(project_ids),

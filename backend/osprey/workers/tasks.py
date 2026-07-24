@@ -64,10 +64,14 @@ async def refresh_project_task(session: AsyncSession, project_id: str) -> dict:
 
 async def poll_all_active(session: AsyncSession) -> dict:
     rows = (
-        await session.execute(
-            select(Connection).where(Connection.status != ConnectionStatus.revoked)
+        (
+            await session.execute(
+                select(Connection).where(Connection.status != ConnectionStatus.revoked)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     total = 0
     for row in rows:
         res = await poll_connection(session, row.id)
@@ -85,10 +89,14 @@ async def run_scheduled_scripts(session: AsyncSession) -> dict:
 async def renew_subscriptions(session: AsyncSession, *, notify_base: str = "") -> dict:
     """Create/renew provider webhook subscriptions before they lapse."""
     rows = (
-        await session.execute(
-            select(Connection).where(Connection.status == ConnectionStatus.active)
+        (
+            await session.execute(
+                select(Connection).where(Connection.status == ConnectionStatus.active)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     renewed = 0
     for row in rows:
         connector = get_connector(row.source_type)

@@ -38,7 +38,7 @@ class ScoreResult:
     urgency: float
     impact: float
     confidence: float
-    total: float          # 0..100
+    total: float  # 0..100
     bucket: Bucket
     explanation: str
     factors: dict = field(default_factory=dict)
@@ -59,7 +59,9 @@ def _parse_deadline(value: str | datetime | None) -> datetime | None:
         return None
 
 
-def compute_urgency(deadline: datetime | None, last_activity: datetime | None, now: datetime) -> float:
+def compute_urgency(
+    deadline: datetime | None, last_activity: datetime | None, now: datetime
+) -> float:
     """Time-to-deadline dominates; aging provides a floor when there's no date."""
     deadline_component = 0.0
     if deadline is not None:

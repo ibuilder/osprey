@@ -18,7 +18,42 @@ from ..config import settings
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STOP = frozenset(
-    ["the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "is", "are", "be", "was", "were", "this", "that", "it", "as", "at", "by", "with", "from", "re", "fwd", "fw", "please", "thanks", "thank", "you", "regards", "hi", "hello", "dear"]
+    [
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "of",
+        "to",
+        "in",
+        "on",
+        "for",
+        "is",
+        "are",
+        "be",
+        "was",
+        "were",
+        "this",
+        "that",
+        "it",
+        "as",
+        "at",
+        "by",
+        "with",
+        "from",
+        "re",
+        "fwd",
+        "fw",
+        "please",
+        "thanks",
+        "thank",
+        "you",
+        "regards",
+        "hi",
+        "hello",
+        "dear",
+    ]
 )
 
 

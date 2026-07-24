@@ -51,9 +51,7 @@ async def _load_candidates(session: AsyncSession, project_id: str) -> list[_Cand
     return [_Candidate(item_id=r[0], thread_key=r[1], embedding=r[2]) for r in rows]
 
 
-def _best_match(
-    signal: Signal, candidates: list[_Candidate], threshold: float
-) -> str | None:
+def _best_match(signal: Signal, candidates: list[_Candidate], threshold: float) -> str | None:
     # 1) exact thread key
     if signal.thread_key:
         for c in candidates:
@@ -72,12 +70,16 @@ async def cluster_project(session: AsyncSession, project_id: str) -> list[str]:
     """Attach all unclustered signals to Items. Returns affected item ids."""
     threshold = settings.cluster_similarity_threshold
     unclustered = (
-        await session.execute(
-            select(Signal)
-            .where(Signal.project_id == project_id, col(Signal.item_id).is_(None))
-            .order_by(col(Signal.occurred_at).asc())
+        (
+            await session.execute(
+                select(Signal)
+                .where(Signal.project_id == project_id, col(Signal.item_id).is_(None))
+                .order_by(col(Signal.occurred_at).asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not unclustered:
         return []
 

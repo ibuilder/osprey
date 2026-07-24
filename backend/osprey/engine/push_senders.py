@@ -97,7 +97,11 @@ class ApnsSender(PushSender):
 # --------------------------------------------------------------------------- #
 class FcmSender(PushSender):
     def __init__(self) -> None:
-        self._sa = json.loads(settings.fcm_service_account_json) if settings.fcm_service_account_json else {}
+        self._sa = (
+            json.loads(settings.fcm_service_account_json)
+            if settings.fcm_service_account_json
+            else {}
+        )
         self._access: tuple[str, float] | None = None
 
     async def _access_token(self) -> str:
@@ -118,7 +122,10 @@ class FcmSender(PushSender):
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
                 self._sa.get("token_uri", GOOGLE_TOKEN_URL),
-                data={"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion},
+                data={
+                    "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                    "assertion": assertion,
+                },
             )
             resp.raise_for_status()
             token = resp.json()["access_token"]

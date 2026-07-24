@@ -33,8 +33,12 @@ async def run_task(session: AsyncSession, task: ScriptTask) -> dict:
     created = []
     if out.events:
         created = await emit_events(
-            session, org_id=task.org_id, project_id=task.project_id,
-            source_type="pyscript", events=out.events, account_ref=task.name,
+            session,
+            org_id=task.org_id,
+            project_id=task.project_id,
+            source_type="pyscript",
+            events=out.events,
+            account_ref=task.name,
         )
     if created:
         await run_pipeline(session, task.project_id)
@@ -62,10 +66,14 @@ async def run_due_scripts(session: AsyncSession) -> dict:
         return {"ran": 0}
     now = utcnow()
     tasks = (
-        await session.execute(
-            select(ScriptTask).where(ScriptTask.enabled, ScriptTask.schedule_minutes > 0)
+        (
+            await session.execute(
+                select(ScriptTask).where(ScriptTask.enabled, ScriptTask.schedule_minutes > 0)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     ran = 0
     for task in tasks:
         due = (

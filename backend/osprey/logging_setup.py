@@ -28,9 +28,7 @@ class ScrubFilter(logging.Filter):
 
 def configure_logging(level: str = "INFO") -> None:
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)-7s %(name)s :: %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s :: %(message)s"))
     handler.addFilter(ScrubFilter())
     root = logging.getLogger()
     root.handlers.clear()
