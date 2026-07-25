@@ -48,6 +48,14 @@ async def lifespan(app: FastAPI):
     # In dev/test the schema is created on boot; production uses Alembic migrations.
     if not settings.is_prod:
         await create_all()
+
+    # If tenant isolation is switched on, confirm the connection can't bypass it.
+    if settings.rls_enabled and not settings.is_sqlite:
+        from .db import session_scope
+        from .security.rls import verify_enforcement
+
+        async with session_scope() as session:
+            await verify_enforcement(session)
     log.info(
         "Osprey %s starting (env=%s, connectors=%s)", __version__, settings.env, registry.types()
     )

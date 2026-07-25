@@ -89,3 +89,40 @@ async def features(_: Principal = Depends(require_role(Role.admin))) -> dict:
         "scripts": settings.feature_scripts,
         "ai_provider_default": settings.ai_provider,
     }
+
+
+@router.get("/security/tenant-isolation")
+async def tenant_isolation(
+    session: AsyncSession = Depends(db_session),
+    _: Principal = Depends(require_role(Role.admin)),
+) -> dict:
+    """Is row-level security switched on *and* actually enforced for this connection?
+
+    Configured-but-bypassed is the dangerous state: policies exist, so it looks set
+    up, while a superuser connection quietly ignores them.
+    """
+    from ..security.rls import can_bypass_rls
+
+    if settings.is_sqlite:
+        return {
+            "enabled": settings.rls_enabled,
+            "enforced": False,
+            "detail": "SQLite has no row-level security; use Postgres in production",
+        }
+    if not settings.rls_enabled:
+        return {
+            "enabled": False,
+            "enforced": False,
+            "detail": "OSPREY_RLS_ENABLED is off; isolation relies on application scoping alone",
+        }
+    bypass = await can_bypass_rls(session)
+    return {
+        "enabled": True,
+        "enforced": not bypass,
+        "detail": (
+            "the database role can bypass RLS (superuser or BYPASSRLS) — tenant "
+            "isolation is NOT enforced; connect as an ordinary role"
+            if bypass
+            else "row-level security is enforced for this connection"
+        ),
+    }

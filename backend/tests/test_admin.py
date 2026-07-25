@@ -43,3 +43,11 @@ async def test_admin_requires_admin_role(auth_client, client):
     token = create_access_token(viewer)
     r = await client.get("/admin/stats", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 403
+
+
+async def test_tenant_isolation_endpoint_is_honest_on_sqlite(auth_client):
+    """On SQLite the endpoint must not claim isolation is enforced."""
+    client, _ = auth_client
+    body = (await client.get("/admin/security/tenant-isolation")).json()
+    assert body["enforced"] is False
+    assert "SQLite" in body["detail"]

@@ -7,9 +7,14 @@ services:
       POSTGRES_USER: osprey
       POSTGRES_PASSWORD: osprey
       POSTGRES_DB: osprey
+      # Consumed by the init script below when it creates the app role.
+      OSPREY_APP_DB_PASSWORD: ${OSPREY_APP_DB_PASSWORD:-osprey_app}
     ports: ["5432:5432"]
     volumes:
       - osprey_pgdata:/var/lib/postgresql/data
+      # Creates the non-superuser "osprey_app" role on first start, so row-level
+      # security can actually enforce (a superuser connection bypasses it).
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U osprey"]
       interval: 5s
@@ -27,12 +32,15 @@ services:
 
   api:
     build: ./backend
+    # Migrations run as the schema OWNER (they create/alter tables); the app then
+    # serves as the ordinary role, which is what makes row-level security bite.
     command: >
-      sh -c "alembic upgrade head &&
+      sh -c "OSPREY_DATABASE_URL=$$OSPREY_MIGRATION_DATABASE_URL alembic upgrade head &&
              uvicorn osprey.main:app --host 0.0.0.0 --port 8000"
     environment:
       OSPREY_ENV: prod
-      OSPREY_DATABASE_URL: postgresql+asyncpg://osprey:osprey@db:5432/osprey
+      OSPREY_DATABASE_URL: postgresql+asyncpg://osprey_app:${OSPREY_APP_DB_PASSWORD:-osprey_app}@db:5432/osprey
+      OSPREY_MIGRATION_DATABASE_URL: postgresql+asyncpg://osprey:osprey@db:5432/osprey
       OSPREY_REDIS_URL: redis://redis:6379/0
       OSPREY_SECRET_KEY: ${OSPREY_SECRET_KEY:?set OSPREY_SECRET_KEY in .env}
       OSPREY_ENCRYPTION_KEY: ${OSPREY_ENCRYPTION_KEY:?set OSPREY_ENCRYPTION_KEY in .env}
@@ -48,7 +56,7 @@ services:
     command: arq osprey.workers.main.WorkerSettings
     environment:
       OSPREY_ENV: prod
-      OSPREY_DATABASE_URL: postgresql+asyncpg://osprey:osprey@db:5432/osprey
+      OSPREY_DATABASE_URL: postgresql+asyncpg://osprey_app:${OSPREY_APP_DB_PASSWORD:-osprey_app}@db:5432/osprey
       OSPREY_REDIS_URL: redis://redis:6379/0
       OSPREY_SECRET_KEY: ${OSPREY_SECRET_KEY:?set OSPREY_SECRET_KEY in .env}
       OSPREY_ENCRYPTION_KEY: ${OSPREY_ENCRYPTION_KEY:?set OSPREY_ENCRYPTION_KEY in .env}

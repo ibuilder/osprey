@@ -136,3 +136,29 @@ async def test_set_current_org_helper_scopes_the_session(session):
         assert names == ["A project"]
     finally:
         settings.rls_enabled = original
+
+
+async def test_can_bypass_rls_detects_superuser_vs_ordinary_role(session):
+    """The startup guard must tell a bypassing role from an enforcing one."""
+    from osprey.security.rls import can_bypass_rls
+
+    # The CI container connects as a superuser — it *would* bypass RLS.
+    assert await can_bypass_rls(session) is True
+
+    # After assuming the ordinary app role, it would not.
+    await _become_app_role(session)
+    assert await can_bypass_rls(session) is False
+
+
+async def test_verify_enforcement_reports_false_for_bypassing_role(session):
+    """Configured-but-bypassed must report False, not a cheerful True."""
+    from osprey.security.rls import verify_enforcement
+
+    original = settings.rls_enabled
+    settings.rls_enabled = True
+    try:
+        assert await verify_enforcement(session) is False  # superuser
+        await _become_app_role(session)
+        assert await verify_enforcement(session) is True  # ordinary role
+    finally:
+        settings.rls_enabled = original

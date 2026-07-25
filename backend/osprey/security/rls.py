@@ -23,10 +23,14 @@ dedicated role instead::
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
+
+log = logging.getLogger("osprey.rls")
 
 
 async def set_current_org(session: AsyncSession, org_id: str) -> None:
@@ -37,3 +41,42 @@ async def set_current_org(session: AsyncSession, org_id: str) -> None:
     await session.execute(
         text("SELECT set_config('osprey.current_org', :org, true)"), {"org": org_id}
     )
+
+
+async def can_bypass_rls(session: AsyncSession) -> bool:
+    """True if this connection's role would skip row-level security."""
+    row = (
+        await session.execute(
+            text(
+                "SELECT current_setting('is_superuser') = 'on' "
+                "OR COALESCE((SELECT rolbypassrls FROM pg_roles "
+                "WHERE rolname = current_user), false)"
+            )
+        )
+    ).scalar_one()
+    return bool(row)
+
+
+async def verify_enforcement(session: AsyncSession) -> bool:
+    """Startup guard: warn loudly if RLS is enabled but this role bypasses it.
+
+    Applying the policies is not the same as enforcing them. Connecting as a
+    superuser (the default in most Postgres images) leaves tenant isolation
+    silently inert, which is worse than not configuring it at all — so say so.
+    Returns True when RLS will actually be enforced.
+    """
+    if settings.is_sqlite or not settings.rls_enabled:
+        return False
+    try:
+        if await can_bypass_rls(session):
+            log.error(
+                "OSPREY_RLS_ENABLED is set, but the database role can BYPASS row-level "
+                "security (superuser or BYPASSRLS). Tenant isolation is NOT being "
+                "enforced. Connect as an ordinary role — see osprey/security/rls.py."
+            )
+            return False
+    except Exception as exc:  # noqa: BLE001 - never block startup on the check itself
+        log.warning("could not verify row-level security enforcement: %s", exc)
+        return False
+    log.info("row-level security is active and enforced for this connection")
+    return True
