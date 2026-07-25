@@ -22,6 +22,20 @@ Do **not** open a public issue for a security report.
 - App login via JWT (OIDC/SSO-ready); **RBAC** with roles owner/admin/pm/viewer.
 - SCIM provisioning is on the enterprise roadmap.
 
+### Multi-tenant isolation
+- Every query is scoped by `org_id` in application code, and Postgres **row-level
+  security** (migration `0002_rls`) enforces the same boundary in the database, so a
+  query that forgets its filter still cannot cross tenants.
+- **The app must connect as an ordinary database role.** Postgres superusers — and any
+  role with `BYPASSRLS` — skip row-level security entirely, and `FORCE ROW LEVEL
+  SECURITY` does *not* override that. Most Postgres images hand you a superuser by
+  default, which would leave the policies applied but inert. `docker compose` therefore
+  provisions a dedicated `osprey_app` role (`deploy/postgres/init/`), runs migrations as
+  the schema owner, and serves the app as the ordinary role.
+- Osprey checks this itself: it logs an error at startup if RLS is enabled while the
+  connection could bypass it, and `GET /admin/security/tenant-isolation` reports whether
+  isolation is **enforced**, not merely configured.
+
 ### Data protection
 - **In transit:** TLS 1.3 at the edge; HSTS. (Terminate at your reverse proxy /
   ingress; the app assumes an HTTPS front.)
