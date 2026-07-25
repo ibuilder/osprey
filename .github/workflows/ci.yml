@@ -210,6 +210,79 @@ jobs:
           print("OK: api uses the app role, migrations use the owner role")
           PY
 
+  # ---- Deploy smoke test on a real cluster --------------------------------- #
+  # Rendering the chart proves the templates are valid; it cannot prove the thing
+  # actually runs. This installs into a kind cluster with RLS enabled and asserts
+  # the migration hook completes, the pods become ready, and the app reports that
+  # tenant isolation is genuinely enforced. Starts non-blocking.
+  deploy-smoke:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: osprey-ci
+
+      - name: Build the backend image and load it into the cluster
+        run: |
+          docker build -t osprey:ci ./backend
+          kind load docker-image osprey:ci --name osprey-ci
+
+      - name: Deploy Postgres (pgvector) + Redis
+        run: |
+          kubectl apply -f deploy/ci/postgres-redis.yaml
+          kubectl rollout status deploy/osprey-postgres --timeout=180s
+          kubectl rollout status deploy/osprey-redis --timeout=120s
+
+      - name: Install the chart (RLS enabled, app role for runtime)
+        run: |
+          helm install osprey deploy/helm --wait --timeout 5m \
+            --set image.repository=osprey --set image.tag=ci \
+            --set image.pullPolicy=Never \
+            --set config.env=prod --set config.rlsEnabled=true \
+            --set replicaCount.api=1 --set replicaCount.worker=1 \
+            --set-string secrets.secretKey=ci-secret-key-at-least-32-bytes-long-0 \
+            --set-string secrets.encryptionKey=ci-encryption-key \
+            --set-string secrets.webhookHmacSecret=ci-hmac-secret \
+            --set-string secrets.databaseUrl='postgresql+asyncpg://osprey_app:osprey_app@osprey-postgres:5432/osprey' \
+            --set-string secrets.migrationDatabaseUrl='postgresql+asyncpg://osprey:osprey@osprey-postgres:5432/osprey' \
+            --set-string secrets.redisUrl='redis://osprey-redis:6379/0'
+
+      - name: Migration hook ran and the schema exists
+        run: |
+          kubectl get jobs
+          TABLES=$(kubectl exec deploy/osprey-postgres -- psql -U osprey -d osprey -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+          echo "public tables: $TABLES"
+          test "$TABLES" -gt 10
+
+      - name: API is healthy and reports RLS as ENFORCED
+        run: |
+          kubectl rollout status deploy/osprey-osprey-api --timeout=180s
+          kubectl port-forward svc/osprey-osprey-api 8000:8000 &
+          sleep 8
+          curl -fsS http://localhost:8000/health | tee /dev/stderr | grep -q '"status":"ok"'
+          curl -fsS http://localhost:8000/ready  | tee /dev/stderr | grep -q '"ready":true'
+          # Register an owner, then ask the admin endpoint whether isolation is real.
+          TOKEN=$(curl -fsS -X POST http://localhost:8000/auth/register \
+            -H 'content-type: application/json' \
+            -d '{"email":"ci@example.com","password":"password123","org_name":"CI"}' \
+            | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+          ISO=$(curl -fsS http://localhost:8000/admin/security/tenant-isolation \
+            -H "authorization: Bearer $TOKEN")
+          echo "$ISO"
+          echo "$ISO" | grep -q '"enforced":true'
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods,jobs -o wide
+          kubectl describe pods | tail -80
+          kubectl logs -l app.kubernetes.io/component=api --tail=120 || true
+          kubectl logs -l app.kubernetes.io/component=worker --tail=60 || true
+          kubectl logs job/osprey-osprey-migrate --tail=80 || true
+
   # ---- Supply chain: SBOM, vuln scans -------------------------------------- #
   supply-chain:
     runs-on: ubuntu-latest

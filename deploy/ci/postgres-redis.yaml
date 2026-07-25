@@ -1,0 +1,95 @@
+# Minimal in-cluster dependencies for the deploy smoke test. NOT for production —
+# no persistence, no resource tuning, credentials in plain text. Production should
+# use a managed database or a proper operator/chart.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: osprey-db-init
+data:
+  # Mirrors deploy/postgres/init/01-app-role.sql: the app connects as an ordinary
+  # role so row-level security actually enforces. Managed databases need the same
+  # role created by hand — this is what that looks like.
+  01-app-role.sql: |
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'osprey_app') THEN
+        CREATE ROLE osprey_app LOGIN PASSWORD 'osprey_app';
+      END IF;
+    END $$;
+    ALTER ROLE osprey_app NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+    GRANT CONNECT ON DATABASE osprey TO osprey_app;
+    GRANT USAGE ON SCHEMA public TO osprey_app;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO osprey_app;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+      GRANT USAGE, SELECT ON SEQUENCES TO osprey_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO osprey_app;
+    CREATE EXTENSION IF NOT EXISTS vector;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: osprey-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: osprey-postgres }
+  template:
+    metadata:
+      labels: { app: osprey-postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          env:
+            - { name: POSTGRES_USER, value: osprey }
+            - { name: POSTGRES_PASSWORD, value: osprey }
+            - { name: POSTGRES_DB, value: osprey }
+          ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - { name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "osprey"] }
+            initialDelaySeconds: 5
+            periodSeconds: 3
+      volumes:
+        - name: init
+          configMap: { name: osprey-db-init }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: osprey-postgres
+spec:
+  selector: { app: osprey-postgres }
+  ports: [{ port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: osprey-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: osprey-redis }
+  template:
+    metadata:
+      labels: { app: osprey-redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports: [{ containerPort: 6379 }]
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            initialDelaySeconds: 3
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: osprey-redis
+spec:
+  selector: { app: osprey-redis }
+  ports: [{ port: 6379, targetPort: 6379 }]
