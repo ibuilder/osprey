@@ -10,6 +10,7 @@ path. Everything else is forced, so tests can never reach a real provider.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import pathlib
 import tempfile
@@ -51,7 +52,12 @@ async def _schema():
     await drop_all()
     await create_all()
     yield
-    await dispose()
+    # Sync tests that use starlette's TestClient run the app on their own loop via a
+    # blocking portal, and the app's lifespan disposes the engine there. Disposing
+    # again from the pytest loop can then hit an already-closed / foreign-loop pool.
+    # Teardown cleanup must not fail the test that just passed.
+    with contextlib.suppress(Exception):
+        await dispose()
 
 
 @pytest_asyncio.fixture

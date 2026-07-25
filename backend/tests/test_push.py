@@ -9,7 +9,7 @@ from osprey.engine.notify import (
     critical_items,
     notify_critical,
 )
-from osprey.models import Device, Org, utcnow
+from osprey.models import Device, Org, User, utcnow
 
 
 async def test_register_device(auth_client):
@@ -38,9 +38,15 @@ def test_critical_items_filter():
 async def test_notify_critical_pushes_to_devices(session):
     org = Org(name="Push Co")
     session.add(org)
+    # A Device references a real user — Postgres enforces the FK even though
+    # SQLite does not by default, so create the row rather than faking an id.
+    user = User(email="push@example.com")
+    session.add(user)
     await session.flush()
     session.add(
-        Device(org_id=org.id, user_id="u1", platform="android", token="fcm-1", created_at=utcnow())
+        Device(
+            org_id=org.id, user_id=user.id, platform="android", token="fcm-1", created_at=utcnow()
+        )
     )
     await session.flush()
 
