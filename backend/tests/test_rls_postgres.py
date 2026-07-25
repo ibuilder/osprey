@@ -162,3 +162,23 @@ async def test_verify_enforcement_reports_false_for_bypassing_role(session):
         assert await verify_enforcement(session) is True  # ordinary role
     finally:
         settings.rls_enabled = original
+
+
+async def test_registration_works_with_rls_enforced(client):
+    """Signup is the one flow with no tenant yet — it must still work under RLS.
+
+    The policies' USING clause also governs INSERT, so without binding the new org
+    up front every row written during registration (org, membership, audit) is
+    rejected. This is a regression guard for exactly that.
+    """
+    original = settings.rls_enabled
+    settings.rls_enabled = True
+    try:
+        resp = await client.post(
+            "/auth/register",
+            json={"email": "rls@example.com", "password": "password123", "org_name": "RLS Co"},
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["access_token"]
+    finally:
+        settings.rls_enabled = original

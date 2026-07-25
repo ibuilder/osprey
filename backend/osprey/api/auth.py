@@ -11,6 +11,7 @@ from ..schemas import LoginRequest, RegisterRequest, TokenResponse
 from ..security import audit
 from ..security.auth import Principal, create_access_token
 from ..security.passwords import hash_password, verify_password
+from ..security.rls import set_current_org
 from .deps import db_session
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -27,6 +28,12 @@ async def register(
         raise HTTPException(status.HTTP_409_CONFLICT, "email already registered")
 
     org = Org(name=body.org_name)
+    # Bind the new tenant BEFORE inserting anything. Registration is the one flow
+    # that runs without an existing tenant context, and with row-level security on,
+    # the policies (whose USING clause also governs INSERT) would reject every row
+    # written here — org, membership, audit entry — because no tenant is bound.
+    # The id is generated client-side, so it can be bound up front.
+    await set_current_org(session, org.id)
     session.add(org)
     await session.flush()
 
