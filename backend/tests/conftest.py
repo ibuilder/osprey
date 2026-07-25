@@ -34,15 +34,24 @@ import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 import osprey.connectors  # noqa: E402,F401  (register connectors)
-from osprey.db import create_all, drop_all, get_sessionmaker  # noqa: E402
+from osprey.db import create_all, dispose, drop_all, get_sessionmaker  # noqa: E402
 from osprey.main import app  # noqa: E402
 
 
 @pytest_asyncio.fixture(autouse=True)
 async def _schema():
+    """Fresh schema per test, and a fresh engine bound to this test's event loop.
+
+    pytest-asyncio runs each test in its own loop. The engine is process-global, and
+    asyncpg pins pooled connections to the loop that opened them, so a cached engine
+    leaks across loops and raises "attached to a different loop" on Postgres.
+    (aiosqlite happens to tolerate it, which is why SQLite runs never caught this.)
+    Disposing on teardown keeps the suite backend-agnostic.
+    """
     await drop_all()
     await create_all()
     yield
+    await dispose()
 
 
 @pytest_asyncio.fixture
