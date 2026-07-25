@@ -1,5 +1,7 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+# >=78.1.1 clears PYSEC-2022-43012 / PYSEC-2025-49 / PYSEC-2026-1918; >=83 also
+# clears PYSEC-2026-3447. Keep this current — pip-audit gates on it in CI.
+requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]

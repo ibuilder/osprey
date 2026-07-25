@@ -1,7 +1,11 @@
-"""Test harness: isolated SQLite DB, offline AI, per-test schema reset.
+"""Test harness: offline AI, per-test schema reset, isolated database.
 
-The whole suite runs with zero infrastructure — deterministic AI provider and
-hashing embedder, SQLite storage — so it is fully reproducible in CI.
+The suite runs with zero infrastructure by default — deterministic AI provider,
+hashing embedder, SQLite storage — so it is reproducible anywhere.
+
+``OSPREY_DATABASE_URL`` is honoured if it is already set, which lets CI point the
+same suite at a real Postgres (see the ``postgres`` job) to exercise the asyncpg
+path. Everything else is forced, so tests can never reach a real provider.
 """
 
 from __future__ import annotations
@@ -12,10 +16,10 @@ import tempfile
 
 # Configure the environment BEFORE importing any osprey module (settings read env).
 _TMP = pathlib.Path(tempfile.mkdtemp(prefix="osprey-test-")).as_posix()
+os.environ.setdefault("OSPREY_DATABASE_URL", f"sqlite+aiosqlite:///{_TMP}/test.db")
 os.environ.update(
     OSPREY_ENV="test",
     OSPREY_DEBUG="true",
-    OSPREY_DATABASE_URL=f"sqlite+aiosqlite:///{_TMP}/test.db",
     OSPREY_SECRET_KEY="test-secret-key-at-least-32-bytes-long-000",
     OSPREY_ENCRYPTION_KEY="test-encryption-key",
     OSPREY_WEBHOOK_HMAC_SECRET="test-hmac-secret",

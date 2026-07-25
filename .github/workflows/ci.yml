@@ -58,6 +58,65 @@ jobs:
           name: coverage-xml
           path: backend/coverage.xml
 
+  # ---- Migrations + the Postgres/asyncpg path ----------------------------- #
+  # The suite runs on SQLite, so this is the only place the production database
+  # path is exercised: real Alembic migrations (including the RLS one), real
+  # pgvector image, real asyncpg driver, plus a drift check between models and
+  # migrations. Starts non-blocking: it has never run before.
+  postgres:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: osprey
+          POSTGRES_PASSWORD: osprey
+          POSTGRES_DB: osprey
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U osprey"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      OSPREY_DATABASE_URL: postgresql+asyncpg://osprey:osprey@localhost:5432/osprey
+      OSPREY_SECRET_KEY: ci-secret-key-at-least-32-bytes-long-000
+      OSPREY_ENCRYPTION_KEY: ci-encryption-key
+      OSPREY_WEBHOOK_HMAC_SECRET: ci-hmac-secret
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install with prod extras (asyncpg, alembic, pgvector)
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -c constraints.txt -e ".[dev,prod]"
+
+      - name: Enable pgvector extension
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          PGPASSWORD=osprey psql -h localhost -U osprey -d osprey -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+
+      - name: Alembic upgrade head
+        run: alembic upgrade head
+
+      - name: Alembic downgrade/upgrade round-trip
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Model/migration drift check
+        run: |
+          # Autogenerate against the migrated DB; a non-empty diff means the models
+          # and migrations have drifted apart.
+          alembic check
+
+      - name: Run the suite against Postgres
+        run: pytest -q
+
   # ---- Desktop frontend: typecheck + build -------------------------------- #
   frontend:
     runs-on: ubuntu-latest
@@ -68,7 +127,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: clients/desktop/package-lock.json
       - run: npm ci
@@ -122,17 +181,24 @@ jobs:
           format: spdx-json
           output-file: osprey-sbom.spdx.json
 
+      # Blocking as of the triage that cleared every finding: setuptools was on
+      # 65.5.0 (7 CVEs -> build-system now requires >=83) and the desktop tree had
+      # sharp<0.35 (libvips CVEs) plus vite<=6.4.2/esbuild. If a new advisory lands,
+      # fix it or add a documented, dated exception — don't silently downgrade this.
       - name: Python dependency audit (pip-audit)
         working-directory: backend
         run: |
-          python -m pip install --upgrade pip pip-audit
+          python -m pip install --upgrade pip setuptools wheel pip-audit
           pip install -c constraints.txt -e "."
-          pip-audit --strict --progress-spinner off || echo "::warning::pip-audit reported findings"
+          pip-audit --progress-spinner off
 
       - name: npm audit (desktop)
         working-directory: clients/desktop
-        run: npm audit --audit-level=high || echo "::warning::npm audit reported findings"
+        run: npm audit --audit-level=high
 
+      # Trivy stays advisory: it also reports OS-package CVEs from the python base
+      # image that we cannot fix from this repo (only by rebasing the image). Treat
+      # its output as a signal to bump the base image, not as a merge blocker.
       - name: Filesystem scan (Trivy)
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
