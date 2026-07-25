@@ -83,7 +83,7 @@ cd backend && python -m osprey.seed
 | **Tauri 2.0 desktop client** (tray · live hotlist · connect · AI · scripts) + **mobile viewer** scaffold | ✅ |
 | Test suite (97 tests: connector poll-loops, Postgres **RLS isolation proven**, ~79% coverage) | ✅ |
 | docker-compose + **Helm chart** (api · worker · migrations · ingress) | ✅ |
-| CI (all blocking): Python **3.11/3.12/3.13** · ruff lint+format · mypy · coverage gate · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · SBOM · pip-audit / npm-audit / Trivy | ✅ |
+| CI (9 blocking jobs): Python **3.11/3.12/3.13** · ruff lint+format · mypy · coverage gate · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · SBOM · pip-audit / npm-audit / Trivy | ✅ |
 
 ## Quick start (local, no Docker)
 

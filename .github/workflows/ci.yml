@@ -214,10 +214,11 @@ jobs:
   # Rendering the chart proves the templates are valid; it cannot prove the thing
   # actually runs. This installs into a kind cluster with RLS enabled and asserts
   # the migration hook completes, the pods become ready, and the app reports that
-  # tenant isolation is genuinely enforced. Starts non-blocking.
+  # tenant isolation is genuinely enforced. Blocking — verified green, and it has
+  # already caught a chart hook-ordering bug and an RLS policy that made signup
+  # impossible, neither of which any offline check could see.
   deploy-smoke:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: helm/kind-action@v1
