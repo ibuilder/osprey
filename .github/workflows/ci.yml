@@ -62,10 +62,10 @@ jobs:
   # The suite runs on SQLite, so this is the only place the production database
   # path is exercised: real Alembic migrations (including the RLS one), real
   # pgvector image, real asyncpg driver, plus a drift check between models and
-  # migrations. Starts non-blocking: it has never run before.
+  # migrations. Blocking — verified green, and it has already caught a broken RLS
+  # policy and an unenforced foreign key that SQLite silently accepted.
   postgres:
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       db:
         image: pgvector/pgvector:pg16
