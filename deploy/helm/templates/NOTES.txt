@@ -12,7 +12,9 @@ BEFORE PRODUCTION — set real secrets (do not ship the defaults):
   --set-string secrets.encryptionKey=$(python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())") \
   --set-string secrets.webhookHmacSecret=$(openssl rand -base64 32)
 
-{{ if eq .Values.config.rlsEnabled "true" -}}
+{{/* toString: values.yaml supplies a string, but --set config.rlsEnabled=true
+     supplies a bool, and eq errors on mismatched types. */ -}}
+{{ if eq (toString .Values.config.rlsEnabled) "true" -}}
 TENANT ISOLATION is enabled. It only enforces if the runtime role is an ordinary one —
 Postgres superusers and BYPASSRLS roles skip row-level security. Verify after rollout:
 
