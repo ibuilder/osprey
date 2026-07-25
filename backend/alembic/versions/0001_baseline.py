@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from alembic import op
 from sqlmodel import SQLModel
 
+from alembic import op
 from osprey import models  # noqa: F401  (register tables)
 
 revision: str = "0001_baseline"
