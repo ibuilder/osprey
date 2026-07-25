@@ -22,20 +22,27 @@ pytestmark = pytest.mark.skipif(
 
 # Mirrors the policies in alembic/versions/0002_rls.py. FORCE is what makes them
 # apply to the table owner too — without it the CI role would bypass RLS entirely.
-_ENABLE_PROJECT_RLS = """
-ALTER TABLE project ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project FORCE ROW LEVEL SECURITY;
-CREATE POLICY osprey_tenant_isolation ON project USING
-  (org_id = current_setting('osprey.current_org', true));
-"""
+# One statement per entry: asyncpg prepares statements, so it rejects multi-command
+# strings.
+_ENABLE_PROJECT_RLS = [
+    "ALTER TABLE project ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE project FORCE ROW LEVEL SECURITY",
+    "CREATE POLICY osprey_tenant_isolation ON project USING "
+    "(org_id = current_setting('osprey.current_org', true))",
+]
 
-_ENABLE_ITEM_RLS = """
-ALTER TABLE item ENABLE ROW LEVEL SECURITY;
-ALTER TABLE item FORCE ROW LEVEL SECURITY;
-CREATE POLICY osprey_tenant_isolation ON item USING
-  (project_id IN (SELECT id FROM project WHERE org_id =
-    current_setting('osprey.current_org', true)));
-"""
+_ENABLE_ITEM_RLS = [
+    "ALTER TABLE item ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE item FORCE ROW LEVEL SECURITY",
+    "CREATE POLICY osprey_tenant_isolation ON item USING "
+    "(project_id IN (SELECT id FROM project WHERE org_id = "
+    "current_setting('osprey.current_org', true)))",
+]
+
+
+async def _apply(session, statements: list[str]) -> None:
+    for stmt in statements:
+        await session.execute(text(stmt))
 
 
 async def _two_orgs(session):
@@ -56,7 +63,7 @@ async def _two_orgs(session):
 
 async def test_rls_hides_other_orgs_projects(session):
     a, b, _, _ = await _two_orgs(session)
-    await session.execute(text(_ENABLE_PROJECT_RLS))
+    await _apply(session, _ENABLE_PROJECT_RLS)
 
     # Scoped to org A: only A's project is visible, even though the query has no
     # org_id predicate of its own — the database applies the filter.
@@ -73,7 +80,7 @@ async def test_rls_hides_other_orgs_projects(session):
 async def test_rls_hides_everything_when_no_tenant_is_set(session):
     """An unscoped connection sees nothing — fail closed, not open."""
     await _two_orgs(session)
-    await session.execute(text(_ENABLE_PROJECT_RLS))
+    await _apply(session, _ENABLE_PROJECT_RLS)
 
     await session.execute(text("SELECT set_config('osprey.current_org', '', true)"))
     rows = (await session.execute(text("SELECT name FROM project"))).scalars().all()
@@ -83,8 +90,8 @@ async def test_rls_hides_everything_when_no_tenant_is_set(session):
 async def test_rls_isolates_items_through_their_project(session):
     """Tables without org_id are still scoped, via the project hop."""
     a, _, _, _ = await _two_orgs(session)
-    await session.execute(text(_ENABLE_PROJECT_RLS))
-    await session.execute(text(_ENABLE_ITEM_RLS))
+    await _apply(session, _ENABLE_PROJECT_RLS)
+    await _apply(session, _ENABLE_ITEM_RLS)
 
     await session.execute(text("SELECT set_config('osprey.current_org', :o, true)"), {"o": a.id})
     titles = (await session.execute(text("SELECT title FROM item"))).scalars().all()
@@ -96,7 +103,7 @@ async def test_set_current_org_helper_scopes_the_session(session):
     from osprey.security.rls import set_current_org
 
     a, _, _, _ = await _two_orgs(session)
-    await session.execute(text(_ENABLE_PROJECT_RLS))
+    await _apply(session, _ENABLE_PROJECT_RLS)
 
     # The helper is a no-op unless RLS is switched on in config.
     original = settings.rls_enabled
