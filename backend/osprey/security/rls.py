@@ -6,7 +6,19 @@ compare each row's ``org_id`` to a per-connection setting, ``osprey.current_org`
 which we set from the authenticated principal.
 
 No-op on SQLite (dev/test). Enable with ``OSPREY_RLS_ENABLED=true`` after running the
-``0002_rls`` migration and connecting as a non-superuser role (superusers bypass RLS).
+``0002_rls`` migration.
+
+**The application must connect as an ordinary role.** Postgres lets superusers — and
+any role with ``BYPASSRLS`` — skip row-level security entirely, and ``FORCE ROW LEVEL
+SECURITY`` does *not* override that. Pointing ``OSPREY_DATABASE_URL`` at a superuser
+(the default in most container images) silently disables this whole control. Create a
+dedicated role instead::
+
+    CREATE ROLE osprey_app LOGIN PASSWORD '...';
+    GRANT USAGE ON SCHEMA public TO osprey_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO osprey_app;
+
+``tests/test_rls_postgres.py`` asserts the isolation actually holds for such a role.
 """
 
 from __future__ import annotations

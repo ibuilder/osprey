@@ -40,9 +40,27 @@ _ENABLE_ITEM_RLS = [
 ]
 
 
+# RLS is bypassed entirely by superusers and by roles with BYPASSRLS — FORCE does
+# not change that. Production must therefore connect as an ordinary role, and these
+# tests assume that role via SET LOCAL ROLE (the CI container user is a superuser).
+_APP_ROLE = "osprey_app_test"
+_CREATE_APP_ROLE = [
+    f"DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{_APP_ROLE}') "
+    f"THEN CREATE ROLE {_APP_ROLE} NOLOGIN; END IF; END $$",
+    f"GRANT USAGE ON SCHEMA public TO {_APP_ROLE}",
+    f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {_APP_ROLE}",
+]
+
+
 async def _apply(session, statements: list[str]) -> None:
     for stmt in statements:
         await session.execute(text(stmt))
+
+
+async def _become_app_role(session) -> None:
+    """Run the rest of this transaction as a non-superuser so RLS actually applies."""
+    await _apply(session, _CREATE_APP_ROLE)
+    await session.execute(text(f"SET LOCAL ROLE {_APP_ROLE}"))
 
 
 async def _two_orgs(session):
@@ -64,6 +82,7 @@ async def _two_orgs(session):
 async def test_rls_hides_other_orgs_projects(session):
     a, b, _, _ = await _two_orgs(session)
     await _apply(session, _ENABLE_PROJECT_RLS)
+    await _become_app_role(session)
 
     # Scoped to org A: only A's project is visible, even though the query has no
     # org_id predicate of its own — the database applies the filter.
@@ -81,6 +100,7 @@ async def test_rls_hides_everything_when_no_tenant_is_set(session):
     """An unscoped connection sees nothing — fail closed, not open."""
     await _two_orgs(session)
     await _apply(session, _ENABLE_PROJECT_RLS)
+    await _become_app_role(session)
 
     await session.execute(text("SELECT set_config('osprey.current_org', '', true)"))
     rows = (await session.execute(text("SELECT name FROM project"))).scalars().all()
@@ -92,6 +112,7 @@ async def test_rls_isolates_items_through_their_project(session):
     a, _, _, _ = await _two_orgs(session)
     await _apply(session, _ENABLE_PROJECT_RLS)
     await _apply(session, _ENABLE_ITEM_RLS)
+    await _become_app_role(session)
 
     await session.execute(text("SELECT set_config('osprey.current_org', :o, true)"), {"o": a.id})
     titles = (await session.execute(text("SELECT title FROM item"))).scalars().all()
@@ -104,6 +125,7 @@ async def test_set_current_org_helper_scopes_the_session(session):
 
     a, _, _, _ = await _two_orgs(session)
     await _apply(session, _ENABLE_PROJECT_RLS)
+    await _become_app_role(session)
 
     # The helper is a no-op unless RLS is switched on in config.
     original = settings.rls_enabled
