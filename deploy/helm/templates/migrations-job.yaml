@@ -20,5 +20,9 @@ spec:
         - name: migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           command: ["alembic", "upgrade", "head"]
-          env: {{- include "osprey.env" . | nindent 12 }}
+          # Runs as the schema OWNER: migrations issue DDL, which the ordinary
+          # runtime role deliberately cannot do.
+          env:
+            {{- include "osprey.env" . | nindent 12 }}
+            {{- include "osprey.migrationDbEnv" . | nindent 12 }}
 {{- end }}

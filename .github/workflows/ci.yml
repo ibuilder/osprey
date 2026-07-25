@@ -165,6 +165,51 @@ jobs:
       - name: Build
         run: cargo build --locked
 
+  # ---- Helm chart: lint + render ------------------------------------------- #
+  # The chart was never validated until now. `helm template` catches template and
+  # value errors that only surface at install time otherwise.
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: Lint
+        run: helm lint deploy/helm
+      - name: Render (defaults)
+        run: helm template osprey deploy/helm > /tmp/rendered.yaml
+      - name: Render (RLS + ingress enabled)
+        run: |
+          helm template osprey deploy/helm \
+            --set config.rlsEnabled=true \
+            --set ingress.enabled=true \
+            --set-string secrets.secretKey=x --set-string secrets.encryptionKey=y \
+            > /tmp/rendered-rls.yaml
+      - name: Assert the app and migration jobs use different DB roles
+        run: |
+          python - <<'PY'
+          import re, sys, yaml
+          docs = [d for d in yaml.safe_load_all(open("/tmp/rendered.yaml")) if d]
+          by_kind = {}
+          for d in docs:
+              name = d["metadata"]["name"]
+              by_kind[(d["kind"], name)] = d
+
+          def db_key(doc):
+              spec = doc["spec"]["template"]["spec"]["containers"][0]
+              for env in spec["env"]:
+                  if env["name"] == "OSPREY_DATABASE_URL":
+                      return env["valueFrom"]["secretKeyRef"]["key"]
+              return None
+
+          api = next(v for (k, n), v in by_kind.items() if k == "Deployment" and n.endswith("-api"))
+          job = next(v for (k, n), v in by_kind.items() if k == "Job")
+          assert db_key(api) == "databaseUrl", db_key(api)
+          assert db_key(job) == "migrationDatabaseUrl", db_key(job)
+          print("OK: api uses the app role, migrations use the owner role")
+          PY
+
   # ---- Supply chain: SBOM, vuln scans -------------------------------------- #
   supply-chain:
     runs-on: ubuntu-latest

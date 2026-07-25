@@ -21,5 +21,7 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["arq", "osprey.workers.main.WorkerSettings"]
-          env: {{- include "osprey.env" . | nindent 12 }}
+          env:
+            {{- include "osprey.env" . | nindent 12 }}
+            {{- include "osprey.appDbEnv" . | nindent 12 }}
           resources: {{- toYaml .Values.resources.worker | nindent 12 }}

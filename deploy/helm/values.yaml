@@ -18,13 +18,34 @@ config:
   hotlistTopN: "25"
   featureAiSift: "true"
   featureScripts: "true"
+  # Postgres row-level security (migration 0002). Only meaningful when the runtime
+  # role is an ordinary one — see secrets.databaseUrl below.
+  rlsEnabled: "false"
 
 # Secrets -> Secret (override via --set-string or a sealed/external secret).
 secrets:
   secretKey: ""                      # OSPREY_SECRET_KEY (JWT signing)
   encryptionKey: ""                  # OSPREY_ENCRYPTION_KEY (token vault)
   webhookHmacSecret: ""              # OSPREY_WEBHOOK_HMAC_SECRET
-  databaseUrl: "postgresql+asyncpg://osprey:osprey@osprey-postgres:5432/osprey"
+  # Two roles by design.
+  #
+  # databaseUrl — the ORDINARY role the api/worker run as. Postgres superusers, and
+  # any role with BYPASSRLS, skip row-level security entirely (FORCE ROW LEVEL
+  # SECURITY does not override that), so pointing this at a superuser silently
+  # disables tenant isolation. Provision it once against your database:
+  #
+  #   CREATE ROLE osprey_app LOGIN PASSWORD '...' NOSUPERUSER NOBYPASSRLS;
+  #   GRANT CONNECT ON DATABASE osprey TO osprey_app;
+  #   GRANT USAGE ON SCHEMA public TO osprey_app;
+  #   ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  #     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO osprey_app;
+  #   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO osprey_app;
+  #
+  # (deploy/postgres/init/01-app-role.sql does exactly this for docker compose.)
+  databaseUrl: "postgresql+asyncpg://osprey_app:osprey_app@osprey-postgres:5432/osprey"
+  # migrationDatabaseUrl — the schema OWNER, used only by the pre-install/upgrade
+  # migration job, because migrations issue DDL.
+  migrationDatabaseUrl: "postgresql+asyncpg://osprey:osprey@osprey-postgres:5432/osprey"
   redisUrl: "redis://osprey-redis:6379/0"
   anthropicApiKey: ""
 

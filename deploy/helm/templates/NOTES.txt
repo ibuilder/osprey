@@ -12,4 +12,17 @@ BEFORE PRODUCTION — set real secrets (do not ship the defaults):
   --set-string secrets.encryptionKey=$(python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())") \
   --set-string secrets.webhookHmacSecret=$(openssl rand -base64 32)
 
+{{ if eq .Values.config.rlsEnabled "true" -}}
+TENANT ISOLATION is enabled. It only enforces if the runtime role is an ordinary one —
+Postgres superusers and BYPASSRLS roles skip row-level security. Verify after rollout:
+
+  GET /admin/security/tenant-isolation   -> {"enabled": true, "enforced": true, ...}
+
+The api logs an error at startup if the role could bypass RLS.
+{{- else -}}
+Tenant isolation currently relies on application-level scoping only. To add the
+database-enforced layer, set config.rlsEnabled=true and make sure secrets.databaseUrl
+points at an ordinary (non-superuser) role — see the comments in values.yaml.
+{{- end }}
+
 Health:  GET /health   Ready: GET /ready   Docs: GET /docs

@@ -23,7 +23,9 @@ spec:
           command: ["uvicorn", "osprey.main:app", "--host", "0.0.0.0", "--port", "8000"]
           ports:
             - containerPort: 8000
-          env: {{- include "osprey.env" . | nindent 12 }}
+          env:
+            {{- include "osprey.env" . | nindent 12 }}
+            {{- include "osprey.appDbEnv" . | nindent 12 }}
           readinessProbe:
             httpGet: { path: /ready, port: 8000 }
             initialDelaySeconds: 10
