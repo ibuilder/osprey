@@ -1,0 +1,109 @@
+"""Row-level security actually isolates tenants (Postgres only).
+
+The 0002 migration creates the policies and CI proves it applies, but applying is
+not the same as enforcing. These tests assert the database itself refuses to hand
+back another org's rows when ``osprey.current_org`` is set — i.e. that RLS would
+still contain a query that forgot its ``org_id`` filter.
+
+Skipped on SQLite, which has no row-level security; the Postgres CI job runs them.
+"""
+
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import text
+
+from osprey.config import settings
+from osprey.models import Item, Org, Project
+
+pytestmark = pytest.mark.skipif(
+    settings.is_sqlite, reason="row-level security is a Postgres feature"
+)
+
+# Mirrors the policies in alembic/versions/0002_rls.py. FORCE is what makes them
+# apply to the table owner too — without it the CI role would bypass RLS entirely.
+_ENABLE_PROJECT_RLS = """
+ALTER TABLE project ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project FORCE ROW LEVEL SECURITY;
+CREATE POLICY osprey_tenant_isolation ON project USING
+  (org_id = current_setting('osprey.current_org', true));
+"""
+
+_ENABLE_ITEM_RLS = """
+ALTER TABLE item ENABLE ROW LEVEL SECURITY;
+ALTER TABLE item FORCE ROW LEVEL SECURITY;
+CREATE POLICY osprey_tenant_isolation ON item USING
+  (project_id IN (SELECT id FROM project WHERE org_id =
+    current_setting('osprey.current_org', true)));
+"""
+
+
+async def _two_orgs(session):
+    """Two orgs, each with a project and an item. Created before RLS is enabled."""
+    a, b = Org(name="Org A"), Org(name="Org B")
+    session.add_all([a, b])
+    await session.flush()
+    pa = Project(org_id=a.id, name="A project")
+    pb = Project(org_id=b.id, name="B project")
+    session.add_all([pa, pb])
+    await session.flush()
+    session.add_all(
+        [Item(project_id=pa.id, title="A item"), Item(project_id=pb.id, title="B item")]
+    )
+    await session.flush()
+    return a, b, pa, pb
+
+
+async def test_rls_hides_other_orgs_projects(session):
+    a, b, _, _ = await _two_orgs(session)
+    await session.execute(text(_ENABLE_PROJECT_RLS))
+
+    # Scoped to org A: only A's project is visible, even though the query has no
+    # org_id predicate of its own — the database applies the filter.
+    await session.execute(text("SELECT set_config('osprey.current_org', :o, true)"), {"o": a.id})
+    names = (await session.execute(text("SELECT name FROM project"))).scalars().all()
+    assert names == ["A project"]
+
+    # Switching tenants switches the visible rows.
+    await session.execute(text("SELECT set_config('osprey.current_org', :o, true)"), {"o": b.id})
+    names = (await session.execute(text("SELECT name FROM project"))).scalars().all()
+    assert names == ["B project"]
+
+
+async def test_rls_hides_everything_when_no_tenant_is_set(session):
+    """An unscoped connection sees nothing — fail closed, not open."""
+    await _two_orgs(session)
+    await session.execute(text(_ENABLE_PROJECT_RLS))
+
+    await session.execute(text("SELECT set_config('osprey.current_org', '', true)"))
+    rows = (await session.execute(text("SELECT name FROM project"))).scalars().all()
+    assert rows == []
+
+
+async def test_rls_isolates_items_through_their_project(session):
+    """Tables without org_id are still scoped, via the project hop."""
+    a, _, _, _ = await _two_orgs(session)
+    await session.execute(text(_ENABLE_PROJECT_RLS))
+    await session.execute(text(_ENABLE_ITEM_RLS))
+
+    await session.execute(text("SELECT set_config('osprey.current_org', :o, true)"), {"o": a.id})
+    titles = (await session.execute(text("SELECT title FROM item"))).scalars().all()
+    assert titles == ["A item"]
+
+
+async def test_set_current_org_helper_scopes_the_session(session):
+    """The app helper used by the request path sets the same GUC."""
+    from osprey.security.rls import set_current_org
+
+    a, _, _, _ = await _two_orgs(session)
+    await session.execute(text(_ENABLE_PROJECT_RLS))
+
+    # The helper is a no-op unless RLS is switched on in config.
+    original = settings.rls_enabled
+    settings.rls_enabled = True
+    try:
+        await set_current_org(session, a.id)
+        names = (await session.execute(text("SELECT name FROM project"))).scalars().all()
+        assert names == ["A project"]
+    finally:
+        settings.rls_enabled = original

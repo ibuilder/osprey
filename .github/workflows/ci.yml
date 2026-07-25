@@ -160,18 +160,10 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
-      # NOTE: add `--locked` once Cargo.lock is generated and committed (requires a
-      # machine with cargo: `cd clients/desktop/src-tauri && cargo generate-lockfile`).
+      # --locked: build exactly what Cargo.lock pins and fail if it would change,
+      # so desktop builds are reproducible and dependency drift is explicit.
       - name: Build
-        run: cargo build
-
-      # Bootstrap helper: publishes the resolved Cargo.lock so it can be committed
-      # from a machine without a Rust toolchain. Remove once the lock is in git.
-      - name: Publish resolved Cargo.lock
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-lock
-          path: clients/desktop/src-tauri/Cargo.lock
+        run: cargo build --locked
 
   # ---- Supply chain: SBOM, vuln scans -------------------------------------- #
   supply-chain:
