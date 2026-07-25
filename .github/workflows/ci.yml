@@ -165,6 +165,14 @@ jobs:
       - name: Build
         run: cargo build
 
+      # Bootstrap helper: publishes the resolved Cargo.lock so it can be committed
+      # from a machine without a Rust toolchain. Remove once the lock is in git.
+      - name: Publish resolved Cargo.lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock
+          path: clients/desktop/src-tauri/Cargo.lock
+
   # ---- Supply chain: SBOM, vuln scans -------------------------------------- #
   supply-chain:
     runs-on: ubuntu-latest
