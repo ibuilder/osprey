@@ -45,9 +45,17 @@ async def test_admin_requires_admin_role(auth_client, client):
     assert r.status_code == 403
 
 
-async def test_tenant_isolation_endpoint_is_honest_on_sqlite(auth_client):
-    """On SQLite the endpoint must not claim isolation is enforced."""
+async def test_tenant_isolation_endpoint_never_overclaims(auth_client):
+    """RLS is off in the test config, so the endpoint must report NOT enforced.
+
+    Runs on both backends (the suite also executes against Postgres in CI), so it
+    asserts the invariant rather than one backend's wording.
+    """
+    from osprey.config import settings
+
     client, _ = auth_client
     body = (await client.get("/admin/security/tenant-isolation")).json()
     assert body["enforced"] is False
-    assert "SQLite" in body["detail"]
+    assert body["detail"]
+    if settings.is_sqlite:
+        assert "SQLite" in body["detail"]
