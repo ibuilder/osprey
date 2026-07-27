@@ -45,8 +45,9 @@ async def lifespan(app: FastAPI):
 
     set_sender(build_sender())
 
-    # In dev/test the schema is created on boot; production uses Alembic migrations.
-    if not settings.is_prod:
+    # Dev/test create the schema on boot; servers migrate with Alembic. The desktop
+    # bundle is production-ish but ships no migration step, so it opts in explicitly.
+    if not settings.is_prod or settings.create_schema_on_start:
         await create_all()
 
     # If tenant isolation is switched on, confirm the connection can't bypass it.

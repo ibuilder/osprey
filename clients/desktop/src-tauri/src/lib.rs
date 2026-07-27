@@ -24,6 +24,79 @@ struct Session {
     token: Mutex<String>,
 }
 
+/// URL of the bundled backend, once it has been spawned and is answering.
+#[derive(Default)]
+struct Sidecar {
+    url: Mutex<Option<String>>,
+}
+
+/// Ask the OS for a free loopback port by binding port 0 and releasing it.
+fn free_port() -> Result<u16, String> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+    listener.local_addr().map(|a| a.port()).map_err(|e| e.to_string())
+}
+
+/// Where the frontend should talk to.
+///
+/// Returns the bundled backend's URL, or `null` if it is not running — in which case
+/// the UI falls back to asking the user for one, so a desktop build can still point
+/// at a shared server.
+#[tauri::command]
+fn backend_url(sidecar: State<Sidecar>) -> Option<String> {
+    sidecar.url.lock().unwrap().clone()
+}
+
+/// Start the bundled backend on a free loopback port and wait until it answers.
+///
+/// Tauri kills sidecars when the app exits, so there is no separate teardown: the
+/// backend's lifetime is the window's. Failure is non-fatal — the app still runs as a
+/// viewer against a backend the user supplies.
+fn spawn_backend(app: &tauri::AppHandle) -> Result<String, String> {
+    use tauri_plugin_shell::ShellExt;
+
+    let port = free_port()?;
+    let url = format!("http://127.0.0.1:{port}");
+
+    let (mut rx, _child) = app
+        .shell()
+        .sidecar("osprey-backend")
+        .map_err(|e| format!("sidecar not bundled: {e}"))?
+        .args(["--port", &port.to_string()])
+        .spawn()
+        .map_err(|e| format!("could not start the backend: {e}"))?;
+
+    // Drain the child's output so its pipe never fills and blocks it.
+    tauri::async_runtime::spawn(async move {
+        use tauri_plugin_shell::process::CommandEvent;
+        while let Some(event) = rx.recv().await {
+            if let CommandEvent::Stderr(line) | CommandEvent::Stdout(line) = event {
+                eprintln!("[backend] {}", String::from_utf8_lossy(&line).trim_end());
+            }
+        }
+    });
+
+    Ok(url)
+}
+
+/// Poll /health until the backend is ready. Called off the UI thread.
+async fn wait_until_healthy(url: &str) -> bool {
+    let client = reqwest::Client::new();
+    for _ in 0..60 {
+        if let Ok(resp) = client
+            .get(format!("{url}/health"))
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            if resp.status().is_success() {
+                return true;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    false
+}
+
 #[derive(Deserialize)]
 struct AuthorizeResp {
     authorize_url: String,
@@ -171,7 +244,25 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Session::default())
+        .manage(Sidecar::default())
         .setup(|app| {
+            // Start the bundled backend, then record its URL once it answers so the
+            // frontend can pick it up. Non-fatal: without it the app is a viewer.
+            match spawn_backend(app.handle()) {
+                Ok(url) => {
+                    let handle = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        if wait_until_healthy(&url).await {
+                            *handle.state::<Sidecar>().url.lock().unwrap() = Some(url.clone());
+                            eprintln!("backend ready on {url}");
+                        } else {
+                            eprintln!("bundled backend never became healthy");
+                        }
+                    });
+                }
+                Err(err) => eprintln!("no bundled backend ({err}); expecting an external one"),
+            }
+
             // System-tray presence — the "always-on" desktop surface.
             let show = MenuItem::with_id(app, "show", "Open Osprey", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -191,7 +282,7 @@ pub fn run() {
                 .build(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![set_session, oauth_connect])
+        .invoke_handler(tauri::generate_handler![set_session, oauth_connect, backend_url])
         .run(tauri::generate_context!())
         .expect("error while running Osprey");
 }

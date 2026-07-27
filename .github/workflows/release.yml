@@ -50,6 +50,29 @@ jobs:
 
       - run: npm ci
 
+      # Freeze the backend and drop it in as a Tauri sidecar, so the installer needs
+      # no Python and no Docker on the user's machine. Tauri resolves externalBin by
+      # target triple, hence the rename.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the backend sidecar
+        shell: bash
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -c constraints.txt -e . pyinstaller
+          pyinstaller packaging/osprey-backend.spec --noconfirm \
+            --distpath dist-sidecar --workpath build-sidecar
+          TRIPLE=$(rustc -vV | sed -n 's/^host: //p')
+          mkdir -p ../clients/desktop/src-tauri/binaries
+          if [ -f dist-sidecar/osprey-backend.exe ]; then
+            cp dist-sidecar/osprey-backend.exe "../clients/desktop/src-tauri/binaries/osprey-backend-${TRIPLE}.exe"
+          else
+            cp dist-sidecar/osprey-backend "../clients/desktop/src-tauri/binaries/osprey-backend-${TRIPLE}"
+          fi
+          ls -la ../clients/desktop/src-tauri/binaries/
+
       - name: Build + sign + release
         uses: tauri-apps/tauri-action@v0
         env:

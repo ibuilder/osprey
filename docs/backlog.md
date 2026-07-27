@@ -51,34 +51,28 @@ What that still does not cover: real-browser rendering and layout, the Tauri she
 integration (the OAuth loopback), and anything visual. Worth a look before a release,
 but it is no longer the only line of defence.
 
-## Self-contained desktop build (no separate backend)
+## ~~Self-contained desktop build~~ — done
 
-**Status:** not started. The most-asked-for gap.
+Resolved. The desktop bundle now ships the backend as a Tauri **sidecar**: the backend
+is frozen with PyInstaller (`backend/packaging/osprey-backend.spec`), declared as
+`externalBin`, and spawned by the Rust shell on a free loopback port at startup —
+Tauri terminates it with the app. `osprey/local.py` decides everything about running
+privately (per-user app-data directory, secrets generated once on first run, SQLite,
+offline AI provider), so that logic stays in Python where it is tested
+(`tests/test_local_mode.py`).
 
-Today the desktop app is a viewer: it has no `externalBin`, spawns no backend, and
-expects one reachable at `OSPREY_DATABASE_URL`'s host (default `http://localhost:8000`).
-Installing only the `.exe` gets a sign-in screen with nothing behind it. Running the
-brain needs Python (`uvicorn osprey.main:app`) or Docker — Docker is *not* required,
-but a second thing to start is.
+The sign-in screen adopts the bundled backend's URL automatically and says so. If no
+sidecar is present — running the frontend in a browser, or a build without it — the
+Backend URL field stays editable, so pointing the app at a shared server still works.
 
-`SPEC.md` §2 frames this as a "Rust local agent" reimplementing the pipeline in the
-shell. That duplicates the entire engine in a second language and would drift from the
-Python one immediately.
+Verified locally on Windows: the frozen binary starts standalone, registers all seven
+connectors, ingests a notice-of-delay email, scores it 91 / act-today / $180,000, and
+produces valid PDF and XLSX exports.
 
-The pragmatic version:
-
-1. Freeze the backend with PyInstaller into one binary.
-2. Declare it as `externalBin` in `tauri.conf.json` so it ships inside the bundle.
-3. Have the Rust shell spawn it on a free port at startup, pass the port to the
-   frontend, and terminate it on exit.
-4. Default the database to SQLite under the OS app-data directory.
-
-Costs to weigh before committing: roughly +40–60 MB on a currently 3.8 MB installer,
-per-platform packaging work, and antivirus false positives are common with PyInstaller
-binaries on Windows.
-
-**Revisit when:** someone needs to hand Osprey to a non-technical user. Until then the
-two-step setup is documented in the README.
+Cost, as predicted: the sidecar is ~36 MB, so the installer grows from 3.8 MB. Two
+caveats remain — PyInstaller binaries draw antivirus false positives on Windows, and
+the sidecar is only built in the release workflow, so `npm run tauri dev` still needs
+a backend started by hand (or `python -m osprey.local`).
 
 ## What is *not* covered by CI
 

@@ -35,3 +35,9 @@ clients/**/src-tauri/target/
 
 # Downloaded release artifacts (built by CI, not source)
 dist-release/
+
+# PyInstaller sidecar build output
+backend/dist-sidecar/
+backend/build-sidecar/
+backend/*.spec.bak
+clients/desktop/src-tauri/binaries/

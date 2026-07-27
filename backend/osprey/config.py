@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     app_name: str = "Osprey"
     public_base_url: str = ""  # external URL for webhook callbacks (subscriptions)
+    # Create tables from the models at startup. Off for servers, which migrate with
+    # Alembic; on for the desktop bundle, which ships no migration step.
+    create_schema_on_start: bool = False
 
     # ---- Security -----------------------------------------------------------
     # Override BOTH of these in production. Defaults are intentionally insecure

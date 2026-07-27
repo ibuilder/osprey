@@ -12,11 +12,39 @@ export default function App() {
 
 export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE);
+  const [bundled, setBundled] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
   const [mode, setMode] = useState<"login" | "register">("login");
   const [err, setErr] = useState("");
+
+  // The bundle ships its own backend. Poll briefly for it to come up, and adopt its
+  // URL when it does — so a fresh install needs no setup. If it never appears (dev in
+  // a browser, or a build without the sidecar) the field stays editable and the user
+  // can point at a server they run.
+  useEffect(() => {
+    let cancelled = false;
+    let tries = 0;
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const url = await invoke<string | null>("backend_url");
+        if (url && !cancelled) {
+          setBaseUrl(url);
+          setBundled(true);
+          return;
+        }
+      } catch {
+        return; // not running inside the Tauri shell
+      }
+      if (++tries < 40) setTimeout(poll, 500);
+    };
+    poll();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function submit() {
     setErr("");
@@ -38,7 +66,13 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Osprey</h2>
         <div className="muted">The foreman that never sleeps.</div>
-        <input placeholder="Backend URL" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+        {bundled ? (
+          <div className="muted" style={{ fontSize: 13 }}>
+            Running your own private copy — nothing leaves this machine.
+          </div>
+        ) : (
+          <input placeholder="Backend URL" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+        )}
         <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         {mode === "register" && (

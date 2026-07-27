@@ -161,6 +161,13 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: clients/desktop/src-tauri
+      # tauri.conf.json declares a sidecar that the release workflow builds with
+      # PyInstaller. This job only compiles the shell, so a placeholder named for the
+      # host triple is enough to satisfy config validation without a 6-minute freeze.
+      - name: Placeholder sidecar
+        run: |
+          mkdir -p binaries
+          touch "binaries/osprey-backend-$(rustc -vV | sed -n 's/^host: //p')"
       - name: Format check
         run: cargo fmt --check
       - name: Clippy
