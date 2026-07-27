@@ -309,7 +309,7 @@ jobs:
             SET LOCAL ROLE osprey_app;
             SELECT set_config('osprey.current_org', 'some-other-tenant', true);
             SELECT count(*) FROM org;
-            COMMIT;" | tail -1)
+            COMMIT;" | grep -E '^[0-9]+$' | tail -1)
           TOTAL=$(kubectl exec deploy/osprey-postgres -- psql -U osprey -d osprey -tAc \
             "SELECT count(*) FROM org")
           echo "orgs visible to a foreign tenant: $VISIBLE (of $TOTAL total)"
