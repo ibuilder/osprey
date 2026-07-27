@@ -117,24 +117,6 @@ jobs:
       - name: Run the suite against Postgres
         run: pytest -q
 
-      # Bootstrap helper: autogenerate the baseline's explicit operations against an
-      # empty database, so the create_all baseline can be replaced from a machine
-      # without Postgres. Remove once 0001 carries real ops.
-      - name: Autogenerate explicit baseline ops
-        run: |
-          PGPASSWORD=osprey psql -h localhost -U osprey -d postgres -c 'CREATE DATABASE baseline_gen;'
-          PGPASSWORD=osprey psql -h localhost -U osprey -d baseline_gen -c 'CREATE EXTENSION IF NOT EXISTS vector;'
-          # Stamp (don't run) head on the empty database: alembic only autogenerates
-          # from a DB it considers current, and diffing the models against empty
-          # yields the full set of create_table ops.
-          export OSPREY_DATABASE_URL=postgresql+asyncpg://osprey:osprey@localhost:5432/baseline_gen
-          alembic stamp head
-          alembic revision --autogenerate -m "generated baseline" --rev-id gen_baseline
-          cat alembic/versions/*gen_baseline*.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: generated-baseline
-          path: backend/alembic/versions/*gen_baseline*.py
 
   # ---- Desktop frontend: typecheck + build -------------------------------- #
   frontend:
