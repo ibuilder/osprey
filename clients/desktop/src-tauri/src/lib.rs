@@ -126,7 +126,6 @@ fn drain_output(mut rx: tauri::async_runtime::Receiver<tauri_plugin_shell::proce
     });
 }
 
-
 /// Poll /health until the backend is ready. Called off the UI thread.
 async fn wait_until_healthy(url: &str) -> bool {
     let client = reqwest::Client::new();
