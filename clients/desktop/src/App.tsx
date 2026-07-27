@@ -13,19 +13,24 @@ export default function App() {
 export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE);
   const [bundled, setBundled] = useState(false);
+  const [starting, setStarting] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
   const [mode, setMode] = useState<"login" | "register">("login");
   const [err, setErr] = useState("");
 
-  // The bundle ships its own backend. Poll briefly for it to come up, and adopt its
-  // URL when it does — so a fresh install needs no setup. If it never appears (dev in
-  // a browser, or a build without the sidecar) the field stays editable and the user
-  // can point at a server they run.
+  // The bundle ships its own backend. Poll for it to come up and adopt its URL, so a
+  // fresh install needs no setup. If it never appears (dev in a browser, or a build
+  // without the sidecar) the field stays editable and the user can point at their own.
+  //
+  // The budget must exceed the Rust side's health wait (60 × 500ms), or a slow cold
+  // start — routine for a PyInstaller onefile on Windows — leaves the UI pointed at
+  // the default while a healthy backend sits on a port nothing reads.
   useEffect(() => {
     let cancelled = false;
     let tries = 0;
+    const MAX_TRIES = 150; // ~75s, comfortably past the shell's own timeout
     const poll = async () => {
       if (cancelled) return;
       try {
@@ -33,12 +38,19 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
         if (url && !cancelled) {
           setBaseUrl(url);
           setBundled(true);
+          setStarting(false);
           return;
         }
       } catch {
-        return; // not running inside the Tauri shell
+        setStarting(false); // not running inside the Tauri shell
+        return;
       }
-      if (++tries < 40) setTimeout(poll, 500);
+      if (++tries < MAX_TRIES) {
+        setTimeout(poll, 500);
+      } else {
+        setStarting(false);
+        setErr("The bundled backend did not start. Enter a backend URL to continue.");
+      }
     };
     poll();
     return () => {
@@ -66,7 +78,11 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Osprey</h2>
         <div className="muted">The foreman that never sleeps.</div>
-        {bundled ? (
+        {starting ? (
+          <div className="muted" style={{ fontSize: 13 }}>
+            Starting your private copy… first launch can take a moment.
+          </div>
+        ) : bundled ? (
           <div className="muted" style={{ fontSize: 13 }}>
             Running your own private copy — nothing leaves this machine.
           </div>
@@ -79,8 +95,8 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
           <input placeholder="Organization name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
         )}
         {err && <div className="notice">{err}</div>}
-        <button className="primary" style={{ width: "100%" }} onClick={submit}>
-          {mode === "login" ? "Sign in" : "Create account"}
+        <button className="primary" style={{ width: "100%" }} onClick={submit} disabled={starting}>
+          {starting ? "Starting…" : mode === "login" ? "Sign in" : "Create account"}
         </button>
         <div className="muted" style={{ textAlign: "center" }}>
           <a onClick={() => setMode(mode === "login" ? "register" : "login")}>

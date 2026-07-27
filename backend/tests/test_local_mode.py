@@ -81,3 +81,51 @@ def test_app_data_dir_is_created_and_per_user():
     directory = app_data_dir()
     assert directory.exists()
     assert directory.name == "Osprey"
+
+
+def test_missing_key_is_added_without_replacing_existing_ones(tmp_path):
+    """The failure this guards against: regenerating encryption_key would make every
+    already-sealed connector token undecryptable. Only the absent key is created."""
+    first = load_or_create_secrets(tmp_path)
+    partial = {"secret_key": first["secret_key"], "encryption_key": first["encryption_key"]}
+    (tmp_path / SECRETS_FILE).write_text(json.dumps(partial), encoding="utf-8")
+
+    second = load_or_create_secrets(tmp_path)
+
+    assert second["secret_key"] == first["secret_key"]
+    assert second["encryption_key"] == first["encryption_key"]
+    assert second["webhook_hmac_secret"]  # the missing one was filled in
+
+
+def test_corrupt_secrets_file_does_not_brick_startup(tmp_path):
+    """A half-written file must not make every future launch crash."""
+    (tmp_path / SECRETS_FILE).write_text('{"secret_key": "trunc', encoding="utf-8")
+
+    creds = load_or_create_secrets(tmp_path)
+
+    assert all(creds.values())
+    # The unreadable original is kept rather than silently destroyed.
+    assert (tmp_path / "secrets.json.corrupt").exists()
+
+
+def test_secrets_file_is_written_atomically(tmp_path):
+    load_or_create_secrets(tmp_path)
+    # No temp file left behind, and the result parses.
+    assert not list(tmp_path.glob("*.tmp"))
+    json.loads((tmp_path / SECRETS_FILE).read_text(encoding="utf-8"))
+
+
+def test_local_mode_allows_the_tauri_webview_origin(tmp_path, monkeypatch):
+    """env=prod denies CORS by default; the webview is a different origin from the
+    loopback API, so the desktop build must name it or every request fails."""
+    import os
+
+    from osprey.local import TAURI_ORIGINS
+
+    monkeypatch.delenv("OSPREY_CORS_ALLOW_ORIGINS", raising=False)
+    configure_environment(tmp_path / "data")
+
+    allowed = json.loads(os.environ["OSPREY_CORS_ALLOW_ORIGINS"])
+    assert "http://tauri.localhost" in allowed  # Windows
+    assert "tauri://localhost" in allowed  # macOS / Linux
+    assert allowed == TAURI_ORIGINS

@@ -64,7 +64,18 @@ jobs:
           pip install -c constraints.txt -e . pyinstaller
           pyinstaller packaging/osprey-backend.spec --noconfirm \
             --distpath dist-sidecar --workpath build-sidecar
-          TRIPLE=$(rustc -vV | sed -n 's/^host: //p')
+          # Tauri resolves externalBin by the TARGET triple, which is not always the
+          # host: the macOS matrix cross-builds x86_64 on an arm64 runner. PyInstaller
+          # cannot cross-freeze, so name the binary for whichever target this job
+          # builds and let a mismatched pair fail loudly here rather than at bundle time.
+          TARGET="${MATRIX_ARGS#--target }"
+          TRIPLE="${TARGET:-$(rustc -vV | sed -n 's/^host: //p')}"
+          HOST=$(rustc -vV | sed -n 's/^host: //p')
+          if [ "$TRIPLE" != "$HOST" ]; then
+            echo "::error::cannot freeze the backend for $TRIPLE on a $HOST runner —" \
+                 "PyInstaller does not cross-compile. Build this target on its own runner."
+            exit 1
+          fi
           mkdir -p ../clients/desktop/src-tauri/binaries
           if [ -f dist-sidecar/osprey-backend.exe ]; then
             cp dist-sidecar/osprey-backend.exe "../clients/desktop/src-tauri/binaries/osprey-backend-${TRIPLE}.exe"
@@ -72,6 +83,8 @@ jobs:
             cp dist-sidecar/osprey-backend "../clients/desktop/src-tauri/binaries/osprey-backend-${TRIPLE}"
           fi
           ls -la ../clients/desktop/src-tauri/binaries/
+        env:
+          MATRIX_ARGS: ${{ matrix.args }}
 
       - name: Build + sign + release
         uses: tauri-apps/tauri-action@v0

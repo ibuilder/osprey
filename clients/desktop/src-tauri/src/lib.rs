@@ -24,10 +24,26 @@ struct Session {
     token: Mutex<String>,
 }
 
-/// URL of the bundled backend, once it has been spawned and is answering.
+/// The bundled backend: its URL once healthy, and its process handle.
+///
+/// The handle is retained deliberately. Dropping `CommandChild` does not terminate
+/// the process, so letting it fall out of scope would leak an `osprey-backend`
+/// holding the port and the SQLite file after a crash or force-quit.
 #[derive(Default)]
 struct Sidecar {
     url: Mutex<Option<String>>,
+    child: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
+}
+
+impl Sidecar {
+    /// Stop the backend. Safe to call more than once.
+    fn shutdown(&self) {
+        if let Some(child) = self.child.lock().unwrap().take() {
+            if let Err(err) = child.kill() {
+                eprintln!("could not stop the backend: {err}");
+            }
+        }
+    }
 }
 
 /// Ask the OS for a free loopback port by binding port 0 and releasing it.
@@ -49,26 +65,47 @@ fn backend_url(sidecar: State<Sidecar>) -> Option<String> {
     sidecar.url.lock().unwrap().clone()
 }
 
-/// Start the bundled backend on a free loopback port and wait until it answers.
+/// Start the bundled backend on a free loopback port.
 ///
-/// Tauri kills sidecars when the app exits, so there is no separate teardown: the
-/// backend's lifetime is the window's. Failure is non-fatal — the app still runs as a
-/// viewer against a backend the user supplies.
+/// The child handle is stored in `Sidecar` so it can be killed on exit — dropping it
+/// would not stop the process. Failure is non-fatal: the app still runs as a viewer
+/// against a backend the user supplies.
 fn spawn_backend(app: &tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_shell::ShellExt;
 
-    let port = free_port()?;
-    let url = format!("http://127.0.0.1:{port}");
+    // free_port() is inherently racy: the probe listener is released before the
+    // sidecar binds, so another process can take the port in between. Rather than
+    // fail cryptically, try a few times.
+    let mut last_err = String::new();
+    for attempt in 1..=3 {
+        let port = free_port()?;
+        let url = format!("http://127.0.0.1:{port}");
 
-    let (mut rx, _child) = app
-        .shell()
-        .sidecar("osprey-backend")
-        .map_err(|e| format!("sidecar not bundled: {e}"))?
-        .args(["--port", &port.to_string()])
-        .spawn()
-        .map_err(|e| format!("could not start the backend: {e}"))?;
+        let spawned = app
+            .shell()
+            .sidecar("osprey-backend")
+            .map_err(|e| format!("sidecar not bundled: {e}"))?
+            .args(["--port", &port.to_string()])
+            .spawn();
 
-    // Drain the child's output so its pipe never fills and blocks it.
+        match spawned {
+            Ok((rx, child)) => {
+                // Keep the handle so the process can be terminated later.
+                *app.state::<Sidecar>().child.lock().unwrap() = Some(child);
+                drain_output(rx);
+                return Ok(url);
+            }
+            Err(err) => {
+                last_err = format!("attempt {attempt}: {err}");
+                eprintln!("backend failed to start on port {port} ({err}); retrying");
+            }
+        }
+    }
+    Err(format!("could not start the backend — {last_err}"))
+}
+
+/// Drain the child's output so its pipe never fills and blocks it.
+fn drain_output(mut rx: tauri::async_runtime::Receiver<tauri_plugin_shell::process::CommandEvent>) {
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_shell::process::CommandEvent;
         while let Some(event) = rx.recv().await {
@@ -77,9 +114,8 @@ fn spawn_backend(app: &tauri::AppHandle) -> Result<String, String> {
             }
         }
     });
-
-    Ok(url)
 }
+
 
 /// Poll /health until the backend is ready. Called off the UI thread.
 async fn wait_until_healthy(url: &str) -> bool {
@@ -290,6 +326,13 @@ pub fn run() {
             oauth_connect,
             backend_url
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Osprey");
+        .build(tauri::generate_context!())
+        .expect("error while running Osprey")
+        .run(|app, event| {
+            // Terminate the bundled backend on the way out, so no orphan keeps the
+            // port and the SQLite file locked.
+            if let tauri::RunEvent::Exit = event {
+                app.state::<Sidecar>().shutdown();
+            }
+        });
 }

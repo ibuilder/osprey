@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Create tables from the models at startup. Off for servers, which migrate with
     # Alembic; on for the desktop bundle, which ships no migration step.
     create_schema_on_start: bool = False
+    # Origins allowed to call the API in production. Dev allows everything. The
+    # desktop bundle sets this to the Tauri webview origins, which are not "*".
+    cors_allow_origins: list[str] = []
 
     # ---- Security -----------------------------------------------------------
     # Override BOTH of these in production. Defaults are intentionally insecure
