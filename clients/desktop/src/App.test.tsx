@@ -230,7 +230,8 @@ describe("Login", () => {
     const user = userEvent.setup();
     render(<Login onLogin={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    // Wait out the sidecar handshake before the form settles.
+    expect(await screen.findByRole("button", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Organization name")).not.toBeInTheDocument();
 
     await user.click(screen.getByText("Create an account"));
@@ -245,6 +246,7 @@ describe("Login", () => {
     vi.spyOn(Api, "login").mockRejectedValueOnce(new Error("login failed: 401"));
 
     render(<Login onLogin={vi.fn()} />);
+    await screen.findByRole("button", { name: "Sign in" });
     await user.type(screen.getByPlaceholderText("Email"), "a@b.com");
     await user.type(screen.getByPlaceholderText("Password"), "wrong-password");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
