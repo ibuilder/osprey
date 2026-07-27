@@ -33,7 +33,10 @@ struct Sidecar {
 /// Ask the OS for a free loopback port by binding port 0 and releasing it.
 fn free_port() -> Result<u16, String> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
-    listener.local_addr().map(|a| a.port()).map_err(|e| e.to_string())
+    listener
+        .local_addr()
+        .map(|a| a.port())
+        .map_err(|e| e.to_string())
 }
 
 /// Where the frontend should talk to.
@@ -282,7 +285,11 @@ pub fn run() {
                 .build(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![set_session, oauth_connect, backend_url])
+        .invoke_handler(tauri::generate_handler![
+            set_session,
+            oauth_connect,
+            backend_url
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Osprey");
 }
