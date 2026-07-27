@@ -21,20 +21,15 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # React and its types must move together — a piecemeal bump breaks peer
+      # resolution (@types/react-dom@N requires @types/react@^N), which is exactly
+      # how the first attempt failed. Grouping them (majors included) means one
+      # coherent PR instead of four mutually incompatible ones.
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
       frontend-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
-    ignore:
-      # React 19 (and its types) is a deliberate, separately-tested migration — a
-      # piecemeal bump breaks peer resolution (@types/react-dom@18 needs @types/react@^18).
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@types/react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@types/react-dom"
-        update-types: ["version-update:semver-major"]
     labels: ["dependencies", "desktop"]
 
   # Desktop Rust shell.
