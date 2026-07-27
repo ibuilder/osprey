@@ -50,13 +50,16 @@ cd backend && python -m osprey.seed
 ### The two pieces
 
 - **The brain** (this repo, `backend/`) — the always-on service that does the watching,
-  ranking, and exporting. Runs on a small server or a spare machine, or fully local.
+  ranking, and exporting. Runs on a spare machine, a small server, or your own laptop.
 - **The apps** (`clients/`) — a desktop app (system-tray, live hotlist, connect your
-  accounts) and a mobile viewer. You read and act; the brain never sleeps.
+  accounts) and a mobile viewer. They are **viewers**: they connect to the brain, they
+  don't contain it.
 
-> **Heads up:** Osprey is self-hosted, so first-time setup is a one-time IT step (or a
-> tech-savvy PM following the [setup guide](docs/connecting.md)). After that, connecting
-> an account is point-and-click in the desktop app.
+> **So the desktop app needs the brain running somewhere it can reach** — by default
+> `http://localhost:8000`, changeable on the sign-in screen. Installing only the app
+> gets you a sign-in screen with nothing behind it. See [Run it](#run-it) below;
+> a one-installer, nothing-else-required build is on the
+> [roadmap](docs/backlog.md#self-contained-desktop-build-no-separate-backend), not done.
 
 ---
 
@@ -85,27 +88,51 @@ cd backend && python -m osprey.seed
 | docker-compose + **Helm chart** (api · worker · migrations · ingress) | ✅ |
 | CI (9 blocking jobs): Python **3.11/3.12/3.13** · ruff lint+format · mypy · coverage gate · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · SBOM · pip-audit / npm-audit / Trivy | ✅ |
 
-## Quick start (local, no Docker)
+## Run it
+
+**Docker is optional.** The backend defaults to SQLite, an offline rule-based AI
+provider, and needs no Redis unless you want scheduled polling — so the smallest way
+to run Osprey is Python and nothing else.
+
+### Option A — just Python (simplest)
 
 ```bash
 cd backend
 python -m venv .venv && . .venv/Scripts/activate   # (.venv/bin/activate on *nix)
-pip install -e ".[dev]"
-cp ../.env.example .env
-pytest -q                                            # full suite, offline
-uvicorn osprey.main:app --reload                     # http://localhost:8000/docs
+pip install -c constraints.txt -e ".[dev]"
+uvicorn osprey.main:app                             # http://localhost:8000/docs
 ```
 
-The app boots against **SQLite by default** so it runs with zero infrastructure
-(try `python -m osprey.seed` — see the demo above). Point `OSPREY_DATABASE_URL` at
-Postgres (with pgvector) for production.
+That is enough for the desktop app to sign in, ingest forwarded email/CSV, score, and
+export. What you *don't* get: background polling of connected sources (that is the
+worker), and Postgres-backed features like pgvector search and DB-enforced tenant
+isolation.
 
-## Self-host (Docker)
+### Option B — the full stack (Docker)
 
 ```bash
 cp .env.example .env      # set OSPREY_SECRET_KEY + OSPREY_ENCRYPTION_KEY
 docker compose up         # api :8000, worker, postgres+pgvector, redis
 ```
+
+Adds the background worker (polling, scheduled scripts, subscription renewal),
+Postgres + pgvector, and Redis. This is what production looks like.
+
+### Then the desktop app
+
+Grab an installer from [Releases](https://github.com/ibuilder/osprey/releases) —
+Windows `.exe`/`.msi` and Linux `.deb`/`.rpm`/`.AppImage`. macOS builds need Apple
+signing certificates that aren't configured yet, so build from source there:
+
+```bash
+cd clients/desktop && npm install && npm run tauri dev   # needs the Rust toolchain
+```
+
+On the sign-in screen, point **Backend URL** at wherever you started the brain
+(`http://localhost:8000` by default), then create an account.
+
+> Windows installers are signed with the app's *updater* key, not an Authenticode
+> certificate, so SmartScreen will warn on first run until the project buys one.
 
 ## Design principles (the golden rules)
 

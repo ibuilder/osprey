@@ -51,6 +51,35 @@ What that still does not cover: real-browser rendering and layout, the Tauri she
 integration (the OAuth loopback), and anything visual. Worth a look before a release,
 but it is no longer the only line of defence.
 
+## Self-contained desktop build (no separate backend)
+
+**Status:** not started. The most-asked-for gap.
+
+Today the desktop app is a viewer: it has no `externalBin`, spawns no backend, and
+expects one reachable at `OSPREY_DATABASE_URL`'s host (default `http://localhost:8000`).
+Installing only the `.exe` gets a sign-in screen with nothing behind it. Running the
+brain needs Python (`uvicorn osprey.main:app`) or Docker — Docker is *not* required,
+but a second thing to start is.
+
+`SPEC.md` §2 frames this as a "Rust local agent" reimplementing the pipeline in the
+shell. That duplicates the entire engine in a second language and would drift from the
+Python one immediately.
+
+The pragmatic version:
+
+1. Freeze the backend with PyInstaller into one binary.
+2. Declare it as `externalBin` in `tauri.conf.json` so it ships inside the bundle.
+3. Have the Rust shell spawn it on a free port at startup, pass the port to the
+   frontend, and terminate it on exit.
+4. Default the database to SQLite under the OS app-data directory.
+
+Costs to weigh before committing: roughly +40–60 MB on a currently 3.8 MB installer,
+per-platform packaging work, and antivirus false positives are common with PyInstaller
+binaries on Windows.
+
+**Revisit when:** someone needs to hand Osprey to a non-technical user. Until then the
+two-step setup is documented in the README.
+
 ## What is *not* covered by CI
 
 Worth stating plainly, since the pipeline is otherwise thorough:
