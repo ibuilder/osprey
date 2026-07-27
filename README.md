@@ -117,6 +117,8 @@ docker compose up         # api :8000, worker, postgres+pgvector, redis
 - **Contractual notice deadlines are weighted highest** — missing one can waive a claim.
 - **Excel and PDF exports derive from the same `HotlistSnapshot`.**
 
+Known deferrals and their rationale live in [`docs/backlog.md`](docs/backlog.md).
+
 See [`CLAUDE.md`](CLAUDE.md) for the full agent operating guide and [`SPEC.md`](SPEC.md)
 for the complete build specification.
 
