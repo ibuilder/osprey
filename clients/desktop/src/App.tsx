@@ -10,7 +10,7 @@ export default function App() {
   return <Main session={session} onLogout={() => setSession(null)} />;
 }
 
-function Login({ onLogin }: { onLogin: (s: Session) => void }) {
+export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -110,7 +110,7 @@ function Main({ session, onLogout }: { session: Session; onLogout: () => void })
 
 const BUCKETS = ["act_today", "this_week", "watch"] as const;
 
-function HotlistView({ api, projectId }: { api: Api; projectId: string }) {
+export function HotlistView({ api, projectId }: { api: Api; projectId: string }) {
   const [hot, setHot] = useState<Hotlist | null>(null);
   const [bucket, setBucket] = useState<string>("");
   const [category, setCategory] = useState<string>("");
@@ -234,7 +234,7 @@ function Bar({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ItemModal({ api, itemId, onClose, onAct }: { api: Api; itemId: string; onClose: () => void; onAct: (id: string, type: string) => void }) {
+export function ItemModal({ api, itemId, onClose, onAct }: { api: Api; itemId: string; onClose: () => void; onAct: (id: string, type: string) => void }) {
   const [item, setItem] = useState<import("./api").ItemDetail | null>(null);
   useEffect(() => { api.item(itemId).then(setItem); }, [itemId]);
 

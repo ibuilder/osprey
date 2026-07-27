@@ -13,7 +13,9 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    // vitest `globals: true` + jest-dom matchers, so tsc sees describe/it/expect.
+    "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
   "include": ["src"]
 }
