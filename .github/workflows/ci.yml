@@ -219,6 +219,9 @@ jobs:
   # impossible, neither of which any offline check could see.
   deploy-smoke:
     runs-on: ubuntu-latest
+    # Network-heavy and blocking: cap it so a stalled kind setup or image pull fails
+    # in minutes instead of holding a PR un-mergeable for the 6-hour default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: helm/kind-action@v1
@@ -262,7 +265,13 @@ jobs:
         run: |
           kubectl rollout status deploy/osprey-osprey-api --timeout=180s
           kubectl port-forward svc/osprey-osprey-api 8000:8000 &
-          sleep 8
+          # Wait for the forward to be usable rather than guessing with a sleep —
+          # a slow or dropped forward must not fail an unrelated PR.
+          for i in $(seq 1 45); do
+            curl -fsS --max-time 3 http://localhost:8000/health >/dev/null 2>&1 && break
+            if [ "$i" = 45 ]; then echo "port-forward never became usable"; exit 1; fi
+            sleep 2
+          done
           curl -fsS http://localhost:8000/health | tee /dev/stderr | grep -q '"status":"ok"'
           curl -fsS http://localhost:8000/ready  | tee /dev/stderr | grep -q '"ready":true'
           # Register an owner, then ask the admin endpoint whether isolation is real.
@@ -274,6 +283,38 @@ jobs:
             -H "authorization: Bearer $TOKEN")
           echo "$ISO"
           echo "$ISO" | grep -q '"enforced":true'
+
+      # The endpoint above only proves the runtime ROLE cannot bypass RLS. These two
+      # checks prove the policies themselves exist and actually filter, so a future
+      # tenant table shipped without a policy cannot pass green.
+      - name: Every tenant table carries a policy
+        run: |
+          MISSING=$(kubectl exec deploy/osprey-postgres -- psql -U osprey -d osprey -tAc "
+            SELECT COALESCE(string_agg(t, ','), '') FROM (
+              SELECT unnest(ARRAY['org','membership','project','connection','ai_connection',
+                                  'script_task','device','audit_log','signal','item','score',
+                                  'action','hotlist_snapshot']) AS t
+            ) x
+            WHERE NOT EXISTS (SELECT 1 FROM pg_policies p
+                              WHERE p.schemaname='public' AND p.tablename = x.t)")
+          echo "tables without an RLS policy: '${MISSING}'"
+          test -z "$MISSING"
+
+      - name: Policies actually filter rows for the app role
+        run: |
+          # Registration created exactly one org. Reading as the app role while
+          # scoped to a different tenant must return zero rows.
+          VISIBLE=$(kubectl exec deploy/osprey-postgres -- psql -U osprey -d osprey -tAc "
+            BEGIN;
+            SET LOCAL ROLE osprey_app;
+            SELECT set_config('osprey.current_org', 'some-other-tenant', true);
+            SELECT count(*) FROM org;
+            COMMIT;" | tail -1)
+          TOTAL=$(kubectl exec deploy/osprey-postgres -- psql -U osprey -d osprey -tAc \
+            "SELECT count(*) FROM org")
+          echo "orgs visible to a foreign tenant: $VISIBLE (of $TOTAL total)"
+          test "$TOTAL" -ge 1
+          test "$VISIBLE" = "0"
 
       - name: Diagnostics on failure
         if: failure()
