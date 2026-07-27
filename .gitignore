@@ -32,3 +32,6 @@ Thumbs.db
 node_modules/
 clients/**/dist/
 clients/**/src-tauri/target/
+
+# Downloaded release artifacts (built by CI, not source)
+dist-release/
