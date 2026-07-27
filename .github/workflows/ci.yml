@@ -124,8 +124,12 @@ jobs:
         run: |
           PGPASSWORD=osprey psql -h localhost -U osprey -d postgres -c 'CREATE DATABASE baseline_gen;'
           PGPASSWORD=osprey psql -h localhost -U osprey -d baseline_gen -c 'CREATE EXTENSION IF NOT EXISTS vector;'
-          OSPREY_DATABASE_URL=postgresql+asyncpg://osprey:osprey@localhost:5432/baseline_gen \
-            alembic revision --autogenerate -m "generated baseline" --rev-id gen_baseline
+          # Stamp (don't run) head on the empty database: alembic only autogenerates
+          # from a DB it considers current, and diffing the models against empty
+          # yields the full set of create_table ops.
+          export OSPREY_DATABASE_URL=postgresql+asyncpg://osprey:osprey@localhost:5432/baseline_gen
+          alembic stamp head
+          alembic revision --autogenerate -m "generated baseline" --rev-id gen_baseline
           cat alembic/versions/*gen_baseline*.py
       - uses: actions/upload-artifact@v4
         with:
