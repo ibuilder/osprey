@@ -30,19 +30,29 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   useEffect(() => {
     let cancelled = false;
     let tries = 0;
-    const MAX_TRIES = 150; // ~75s, comfortably past the shell's own timeout
+    // Budget must exceed the shell's own health wait (60 × 500ms), since a
+    // PyInstaller cold start on Windows routinely runs long.
+    const MAX_TRIES = 150;
     const poll = async () => {
       if (cancelled) return;
+      let state: { status?: string; url?: string | null } | undefined;
       try {
-        const url = await invoke<string | null>("backend_url");
-        if (url && !cancelled) {
-          setBaseUrl(url);
-          setBundled(true);
-          setStarting(false);
-          return;
-        }
+        state = await invoke<{ status: string; url: string | null }>("backend_status");
       } catch {
         setStarting(false); // not running inside the Tauri shell
+        return;
+      }
+      if (cancelled) return;
+      if (!state || state.status === "unavailable") {
+        // No sidecar in this build — let the user point at their own backend now
+        // rather than making them wait out the timeout.
+        setStarting(false);
+        return;
+      }
+      if (state.status === "ready" && state.url) {
+        setBaseUrl(state.url);
+        setBundled(true);
+        setStarting(false);
         return;
       }
       if (++tries < MAX_TRIES) {

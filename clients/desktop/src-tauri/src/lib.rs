@@ -32,6 +32,10 @@ struct Session {
 #[derive(Default)]
 struct Sidecar {
     url: Mutex<Option<String>>,
+    /// "starting" | "ready" | "unavailable". Reported to the UI so it can show
+    /// progress while the backend boots, and stop waiting the moment we know there
+    /// is no sidecar to wait for.
+    status: Mutex<Option<String>>,
     child: Mutex<Option<tauri_plugin_shell::process::CommandChild>>,
 }
 
@@ -55,14 +59,20 @@ fn free_port() -> Result<u16, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Where the frontend should talk to.
+/// Where the frontend should talk to, and whether it is worth waiting.
 ///
-/// Returns the bundled backend's URL, or `null` if it is not running — in which case
-/// the UI falls back to asking the user for one, so a desktop build can still point
-/// at a shared server.
+/// Reporting "unavailable" explicitly matters: without it the UI cannot tell a slow
+/// cold start from a build that has no sidecar, and would sit on a progress message
+/// for its whole timeout before letting the user enter a URL.
 #[tauri::command]
-fn backend_url(sidecar: State<Sidecar>) -> Option<String> {
-    sidecar.url.lock().unwrap().clone()
+fn backend_status(sidecar: State<Sidecar>) -> serde_json::Value {
+    let status = sidecar
+        .status
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_else(|| "starting".to_string());
+    serde_json::json!({ "status": status, "url": sidecar.url.lock().unwrap().clone() })
 }
 
 /// Start the bundled backend on a free loopback port.
@@ -291,15 +301,21 @@ pub fn run() {
                 Ok(url) => {
                     let handle = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
+                        let state = handle.state::<Sidecar>();
                         if wait_until_healthy(&url).await {
-                            *handle.state::<Sidecar>().url.lock().unwrap() = Some(url.clone());
+                            *state.url.lock().unwrap() = Some(url.clone());
+                            *state.status.lock().unwrap() = Some("ready".into());
                             eprintln!("backend ready on {url}");
                         } else {
+                            *state.status.lock().unwrap() = Some("unavailable".into());
                             eprintln!("bundled backend never became healthy");
                         }
                     });
                 }
-                Err(err) => eprintln!("no bundled backend ({err}); expecting an external one"),
+                Err(err) => {
+                    *app.state::<Sidecar>().status.lock().unwrap() = Some("unavailable".into());
+                    eprintln!("no bundled backend ({err}); expecting an external one");
+                }
             }
 
             // System-tray presence — the "always-on" desktop surface.
@@ -324,7 +340,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_session,
             oauth_connect,
-            backend_url
+            backend_status
         ])
         .build(tauri::generate_context!())
         .expect("error while running Osprey")

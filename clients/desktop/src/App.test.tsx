@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { invoke } from "@tauri-apps/api/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { HotlistView, ItemModal, Login } from "./App";
@@ -249,5 +250,41 @@ describe("Login", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     expect(await screen.findByText(/login failed: 401/)).toBeInTheDocument();
+  });
+});
+
+describe("Login — bundled backend handshake", () => {
+  it("adopts the sidecar URL and hides the Backend URL field when ready", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ status: "ready", url: "http://127.0.0.1:51234" });
+
+    render(<Login onLogin={vi.fn()} />);
+
+    expect(await screen.findByText(/Running your own private copy/)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Backend URL")).not.toBeInTheDocument();
+  });
+
+  it("reveals the Backend URL field at once when no sidecar is bundled", async () => {
+    // The shell says "unavailable" immediately, so the user must not be made to sit
+    // through the start-up timeout before they can type a URL.
+    vi.mocked(invoke).mockResolvedValueOnce({ status: "unavailable", url: null });
+
+    render(<Login onLogin={vi.fn()} />);
+
+    expect(await screen.findByPlaceholderText("Backend URL")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
+  });
+
+  it("shows progress while the backend is still starting", async () => {
+    vi.mocked(invoke).mockResolvedValue({ status: "starting", url: null });
+    try {
+      render(<Login onLogin={vi.fn()} />);
+
+      expect(await screen.findByText(/Starting your private copy/)).toBeInTheDocument();
+      // Submitting against a placeholder URL would just fail confusingly.
+      expect(screen.getByRole("button", { name: "Starting…" })).toBeDisabled();
+    } finally {
+      vi.mocked(invoke).mockReset();
+      vi.mocked(invoke).mockResolvedValue(undefined);
+    }
   });
 });
