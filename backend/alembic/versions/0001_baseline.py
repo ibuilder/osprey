@@ -417,3 +417,18 @@ def downgrade() -> None:
     op.drop_table("user")
     op.drop_table("org")
     # ### end Alembic commands ###
+
+    # Postgres keeps ENUM types after their tables are dropped, so a
+    # downgrade->upgrade round-trip would fail re-creating them. Autogenerate
+    # does not emit these; drop them explicitly.
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS actiontype")
+        op.execute("DROP TYPE IF EXISTS aiprovider")
+        op.execute("DROP TYPE IF EXISTS bucket")
+        op.execute("DROP TYPE IF EXISTS category")
+        op.execute("DROP TYPE IF EXISTS connectionstatus")
+        op.execute("DROP TYPE IF EXISTS itemstatus")
+        op.execute("DROP TYPE IF EXISTS role")
+        op.execute("DROP TYPE IF EXISTS scriptstatus")
+        op.execute("DROP TYPE IF EXISTS sourcekind")
