@@ -42,8 +42,14 @@ Dependabot now *groups* these four (majors included) rather than ignoring them, 
 future major arrives as one coherent PR. Vite is on 8.x, taken early for a security
 advisory.
 
-Still worth a manual pass over the desktop screens: the `frontend` job proves it
-typechecks and builds, not that the UI behaves.
+The "needs a manual pass" caveat is now largely closed: `src/App.test.tsx` mounts the
+real screens in jsdom and drives them (bucket filtering, search, empty state, opening
+the detail modal, the factor breakdown and cited quote, login error handling), so a
+behavioural regression fails CI rather than waiting for someone to notice it.
+
+What that still does not cover: real-browser rendering and layout, the Tauri shell
+integration (the OAuth loopback), and anything visual. Worth a look before a release,
+but it is no longer the only line of defence.
 
 ## What is *not* covered by CI
 
