@@ -19,7 +19,12 @@ jobs:
         include:
           - os: macos-latest
             args: "--target aarch64-apple-darwin"
-          - os: macos-latest
+          # macos-latest is Apple silicon, and PyInstaller cannot cross-freeze, so
+          # the Intel bundle needs a genuinely Intel runner. Built on macos-latest
+          # this job could only ever fail — which it silently did, hidden behind an
+          # earlier codesign failure, for every release since the backend became a
+          # bundled sidecar.
+          - os: macos-13
             args: "--target x86_64-apple-darwin"
           - os: ubuntu-22.04
             args: ""
