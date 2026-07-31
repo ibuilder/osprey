@@ -53,6 +53,19 @@ class Health(BaseModel):
     detail: str = ""
 
 
+class SubscriptionState(BaseModel):
+    """What a provider subscription leaves behind for the next renewal.
+
+    Persisted into the connection's sealed tokens: ``subscription_id`` so renewal
+    extends the existing subscription instead of creating another, and
+    ``client_state`` so incoming notifications can be authenticated.
+    """
+
+    subscription_id: str
+    client_state: str = ""
+    expires_at: datetime | None = None
+
+
 class Connection(BaseModel):
     """Lightweight connection view passed to connectors (no ORM coupling)."""
 
@@ -124,16 +137,44 @@ class Connector(ABC):
     async def healthcheck(self, conn: Connection) -> Health:
         return Health(ok=True)
 
+    # -- Webhook authentication ---------------------------------------------- #
+    #: How incoming webhooks for this source are authenticated.
+    #:
+    #: ``"hmac"`` — Osprey's own ``X-Osprey-Signature``, for sources that post
+    #: through a relay we control. ``"client_state"`` — the shared secret Osprey
+    #: gave the provider when subscribing, echoed back in the payload. Providers
+    #: like Microsoft Graph sign nothing and offer only the latter, so demanding
+    #: an HMAC from them would reject every genuine notification.
+    webhook_auth: str = "hmac"
+
+    def webhook_client_state(self, payload: dict) -> str | None:
+        """Extract the echoed shared secret from a payload, if it carries one."""
+        return None
+
     # -- Webhook subscription lifecycle -------------------------------------- #
     supports_subscriptions: bool = False
 
-    async def ensure_subscription(self, conn: Connection, notify_url: str) -> str | None:
-        """Create or renew a provider webhook subscription; return its id/expiry.
+    async def ensure_subscription(
+        self, conn: Connection, notify_url: str, lifecycle_url: str = ""
+    ) -> SubscriptionState | None:
+        """Create or renew a provider webhook subscription.
 
-        Subscriptions (e.g. MS Graph) expire and must be renewed before lapse. The
-        default is a no-op for sources without subscriptions (filedrop, procore-poll).
+        Returns the state the caller must persist onto the connection — without
+        that round trip the next renewal cannot find the existing subscription
+        and silently creates a duplicate. Default is a no-op for sources with no
+        subscriptions (filedrop, procore-poll).
         """
         return None
+
+    def lifecycle_events(self, payload: dict) -> list[str]:
+        """Classify a payload as provider subscription-lifecycle events.
+
+        Returns the event names (e.g. ``reauthorizationRequired``) if this is a
+        lifecycle callback rather than a data notification, else an empty list.
+        Parsing lives here; deciding what to do about it lives in the service
+        layer, which owns the database session.
+        """
+        return []
 
 
 class _Registry:

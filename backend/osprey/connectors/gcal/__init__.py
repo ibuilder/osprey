@@ -9,13 +9,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from datetime import datetime
 
-import httpx
-
 from ...config import settings
 from ...models import SourceKind, utcnow
 from ...normalize import clean_text
 from ..base import Connection as ConnView
 from ..base import Connector, Health, NormalizedSignal, RawEvent, registry
+from ..http import connector_client
 
 API = "https://www.googleapis.com/calendar/v3"
 GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -75,7 +74,7 @@ class GoogleCalendarConnector(Connector):
     async def poll(self, conn: ConnView, since: datetime | None) -> AsyncIterator[RawEvent]:
         token = conn.tokens.get("access_token", "")
         headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(timeout=60, headers=headers) as client:
+        async with connector_client("gcal", timeout=60, headers=headers) as client:
             resp = await client.get(
                 f"{API}/calendars/primary/events",
                 params={"maxResults": 50, "singleEvents": "true", "orderBy": "startTime"},

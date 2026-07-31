@@ -1,11 +1,22 @@
-# PyInstaller spec: freeze the Osprey backend into one binary for the desktop bundle.
+# PyInstaller spec: freeze the Osprey backend into a folder for the desktop bundle.
 #
 #   cd backend && pyinstaller packaging/osprey-backend.spec --noconfirm
 #
-# The Tauri shell ships the result as a sidecar and spawns it on a free port. Only the
-# offline path is bundled — SQLite, the deterministic AI provider — so the desktop app
-# needs no Python, no Docker and no API keys. Postgres/Redis/AI extras stay excluded to
-# keep the binary small; a user who wants them runs the server build instead.
+# The Tauri shell ships the result as a bundled resource and spawns it on a free port.
+# Only the offline path is bundled — SQLite, the deterministic AI provider — so the
+# desktop app needs no Python, no Docker and no API keys. Postgres/Redis/AI extras stay
+# excluded to keep it small; a user who wants them runs the server build instead.
+#
+# This produces a DIRECTORY (COLLECT), not a single file, and that is deliberate:
+#
+#   * --onefile unpacks the whole interpreter to a temp dir on every launch. That
+#     self-extracting behaviour is exactly what antivirus heuristics flag, and
+#     unsigned open-source builds get quarantined for it.
+#   * The same unpacking is paid on every cold start, which is what forced the
+#     "Starting your private copy…" wait in the UI.
+#
+# A directory build starts faster and looks like an ordinary application on disk.
+# UPX stays off for the same reason — packed sections read as obfuscation.
 import os
 
 from PyInstaller.utils.hooks import collect_submodules
@@ -53,9 +64,9 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    # Keep the libraries out of the executable; COLLECT lays them out beside it.
+    exclude_binaries=True,
     name="osprey-backend",
     debug=False,
     bootloader_ignore_signals=False,
@@ -67,4 +78,14 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(  # noqa: F821 - PyInstaller global
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="osprey-backend",
 )

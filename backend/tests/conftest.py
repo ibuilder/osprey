@@ -29,6 +29,11 @@ os.environ.update(
     OSPREY_MSGRAPH_CLIENT_SECRET="test-msgraph-secret",
     OSPREY_GOOGLE_CLIENT_ID="test-google-client",
     OSPREY_GOOGLE_CLIENT_SECRET="test-google-secret",
+    # Connector pacing is process-wide and would otherwise make the mocked poll
+    # tests wait on a real token bucket. The retry/backoff logic itself is tested
+    # directly in test_connector_http.py with an injected clock.
+    OSPREY_CONNECTOR_RATE_PER_SEC="10000",
+    OSPREY_CONNECTOR_RATE_BURST="10000",
 )
 
 import pytest_asyncio  # noqa: E402

@@ -8,6 +8,7 @@ for integration testing — never live production data.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
 
@@ -18,9 +19,20 @@ from ...models import SourceKind, utcnow
 from ...normalize import clean_text
 from ..base import Connection as ConnView
 from ..base import Connector, Health, NormalizedSignal, RawEvent, registry
+from ..http import connector_client
+
+log = logging.getLogger(__name__)
 
 AUTH = "https://login.procore.com/oauth/authorize"
 TOKEN = "https://login.procore.com/oauth/token"
+
+_PAGE_SIZE = 50
+# A backstop, not a real limit: a poll that walks 100 pages of one resource has
+# hit a pagination bug, and looping forever would pin the worker.
+_MAX_PAGES = 100
+# "This company doesn't have this module" — skip the resource, keep the poll.
+# Deliberately not 429 or 401, which mean the whole connection is in trouble.
+_SKIP_STATUS = frozenset({403, 404})
 
 # Procore resource_name -> Osprey SourceKind
 _KIND = {
@@ -120,15 +132,44 @@ class ProcoreConnector(Connector):
         token = conn.tokens.get("access_token", "")
         company_id = conn.account_ref
         headers = {"Authorization": f"Bearer {token}", "Procore-Company-Id": company_id}
-        async with httpx.AsyncClient(
-            timeout=60, headers=headers, base_url=settings.procore_base_url
+        async with connector_client(
+            "procore", timeout=60, headers=headers, base_url=settings.procore_base_url
         ) as client:
             for resource in _KIND:
-                resp = await client.get(f"/rest/v1.1/{resource}", params={"per_page": 50})
-                if resp.status_code != 200:
-                    continue
-                for obj in resp.json():
+                async for obj in self._paged(client, resource):
                     yield normalize_procore_resource(resource, obj)
+
+    async def _paged(self, client: httpx.AsyncClient, resource: str) -> AsyncIterator[dict]:
+        """Walk one resource's pages.
+
+        Procore paginates with ``page``/``per_page`` and stops when a page comes
+        back short.
+
+        Only 403/404 are skipped — those mean "this company does not have this
+        module", which must not abort the rest of the poll. Everything else
+        raises: a 401 is a dead token and a 429 is a throttle (already retried by
+        the transport), and treating either as "no data" is precisely the bug
+        this method was rewritten to fix.
+        """
+        for page in range(1, _MAX_PAGES + 1):
+            resp = await client.get(
+                f"/rest/v1.1/{resource}", params={"per_page": _PAGE_SIZE, "page": page}
+            )
+            if resp.status_code in _SKIP_STATUS:
+                log.info(
+                    "procore %s not available to this company (HTTP %s); skipping",
+                    resource,
+                    resp.status_code,
+                )
+                return
+            resp.raise_for_status()
+            batch = resp.json()
+            if not isinstance(batch, list):  # defensive: error bodies are objects
+                return
+            for obj in batch:
+                yield obj
+            if len(batch) < _PAGE_SIZE:
+                return
 
     async def handle_webhook(self, payload: dict) -> AsyncIterator[RawEvent]:
         resource = payload.get("resource_name", "")

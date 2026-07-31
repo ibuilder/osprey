@@ -8,6 +8,8 @@ message, so the connector's mapping logic is verifiable without a live tenant.
 
 from __future__ import annotations
 
+import logging
+import secrets
 from collections.abc import AsyncIterator
 from datetime import datetime
 
@@ -18,7 +20,17 @@ from ...config import settings
 from ...models import SourceKind, utcnow
 from ...normalize import clean_text
 from ..base import Connection as ConnView
-from ..base import Connector, Health, NormalizedSignal, RawEvent, registry
+from ..base import (
+    Connector,
+    Health,
+    NormalizedSignal,
+    RawEvent,
+    SubscriptionState,
+    registry,
+)
+from ..http import connector_client
+
+log = logging.getLogger(__name__)
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 TOKEN_URL = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
@@ -122,7 +134,7 @@ class OutlookConnector(Connector):
             conn.cursor
             or f"{GRAPH}/me/mailFolders/inbox/messages/delta?$select=subject,from,toRecipients,ccRecipients,body,bodyPreview,conversationId,receivedDateTime,webLink,internetMessageId"
         )
-        async with httpx.AsyncClient(timeout=60, headers=headers) as client:
+        async with connector_client("outlook", timeout=60, headers=headers) as client:
             while url:
                 resp = await client.get(url)
                 resp.raise_for_status()
@@ -153,34 +165,85 @@ class OutlookConnector(Connector):
             return Health(ok=False, detail=str(exc))
 
     supports_subscriptions = True
+    # Graph does not sign its notifications; the documented check is the
+    # clientState Osprey supplied at subscribe time, echoed on every callback.
+    webhook_auth = "client_state"
 
-    async def ensure_subscription(self, conn: ConnView, notify_url: str) -> str | None:
+    def webhook_client_state(self, payload: dict) -> str | None:
+        """The clientState Graph echoes, or None if the entries disagree.
+
+        Every entry must carry the same secret. Returning None on a mismatch
+        makes a payload that mixes a genuine notification with a forged one fail
+        the check outright rather than passing on the first entry.
+        """
+        states = {n.get("clientState") for n in payload.get("value", []) if isinstance(n, dict)}
+        if len(states) != 1:
+            return None
+        state = states.pop()
+        return state if isinstance(state, str) else None
+
+    def lifecycle_events(self, payload: dict) -> list[str]:
+        """Graph lifecycle events, if this callback is one.
+
+        Graph sends these to ``lifecycleNotificationUrl`` when a subscription
+        needs re-authorization, has been removed, or when it could not deliver
+        notifications. Ignoring them is how a connection goes quiet without ever
+        reporting an error.
+        """
+        return [
+            event
+            for n in payload.get("value", [])
+            if isinstance(n, dict) and (event := n.get("lifecycleEvent"))
+        ]
+
+    async def ensure_subscription(
+        self, conn: ConnView, notify_url: str, lifecycle_url: str = ""
+    ) -> SubscriptionState | None:
         """Create/renew a Graph change-notification subscription (max ~3 days).
 
-        If the connection already holds a subscription id in its tokens, PATCH to
-        extend it; otherwise POST a new one. Renew well before ``expirationDateTime``.
+        If the connection already holds a subscription id, PATCH to extend it;
+        otherwise POST a new one. The returned state must be persisted — a lost
+        ``subscription_id`` means the next renewal creates a duplicate
+        subscription instead of extending this one, and every cycle leaks another.
         """
         from datetime import timedelta
 
         token = await self._access_token(conn)
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        expiry = (utcnow() + timedelta(days=2, hours=23)).isoformat().replace("+00:00", "Z")
+        expires_at = utcnow() + timedelta(days=2, hours=23)
+        expiry = expires_at.isoformat().replace("+00:00", "Z")
         sub_id = conn.tokens.get("subscription_id")
-        async with httpx.AsyncClient(timeout=30, headers=headers) as client:
+        # Reuse the connection's secret so notifications keep validating across
+        # renewals; mint one on first subscribe.
+        client_state = conn.tokens.get("client_state") or secrets.token_urlsafe(32)
+
+        async with connector_client("outlook", timeout=30, headers=headers) as client:
             if sub_id:
                 resp = await client.patch(
                     f"{GRAPH}/subscriptions/{sub_id}", json={"expirationDateTime": expiry}
                 )
                 if resp.status_code < 300:
-                    return sub_id
-            resp = await client.post(
-                f"{GRAPH}/subscriptions",
-                json={
-                    "changeType": "created,updated",
-                    "notificationUrl": notify_url,
-                    "resource": "me/mailFolders('inbox')/messages",
-                    "expirationDateTime": expiry,
-                },
-            )
+                    return SubscriptionState(
+                        subscription_id=sub_id,
+                        client_state=client_state,
+                        expires_at=expires_at,
+                    )
+                log.info("graph subscription %s could not be extended; creating a new one", sub_id)
+
+            body = {
+                "changeType": "created,updated",
+                "notificationUrl": notify_url,
+                "resource": "me/mailFolders('inbox')/messages",
+                "expirationDateTime": expiry,
+                "clientState": client_state,
+            }
+            if lifecycle_url:
+                body["lifecycleNotificationUrl"] = lifecycle_url
+            resp = await client.post(f"{GRAPH}/subscriptions", json=body)
             resp.raise_for_status()
-            return resp.json().get("id")
+            new_id = resp.json().get("id")
+            if not new_id:
+                return None
+            return SubscriptionState(
+                subscription_id=new_id, client_state=client_state, expires_at=expires_at
+            )
