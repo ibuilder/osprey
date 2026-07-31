@@ -338,6 +338,21 @@ jobs:
           kubectl logs job/osprey-osprey-migrate --tail=80 || true
 
   # ---- Supply chain: SBOM, vuln scans -------------------------------------- #
+  # ---- Workflow files: lint the CI/release definitions themselves ---------- #
+  # release.yml carries real logic now — a certificate probe in bash, and guards
+  # that decide whether a run publishes. None of it executes on a normal push, so
+  # a typo in an expression or an unquoted variable would only surface during an
+  # actual release. actionlint type-checks GitHub expressions and runs shellcheck
+  # over every `run:` block, which is the only cheap coverage this file can get.
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint workflows
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
   supply-chain:
     runs-on: ubuntu-latest
     steps:

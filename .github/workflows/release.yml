@@ -163,8 +163,14 @@ jobs:
           APPLE_TEAM_ID: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_TEAM_ID || '' }}
         with:
           projectPath: clients/desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: "Osprey ${{ github.ref_name }}"
+          # Publish only on a tag push. Without this guard a manual workflow_dispatch
+          # would create a draft release named after the branch ("Osprey main"), so
+          # there was no way to exercise this workflow without polluting Releases —
+          # which is precisely why nothing here has ever been verified before a tag.
+          # With it, workflow_dispatch is a genuine dry run: it builds everything,
+          # signs nothing, publishes nothing.
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Osprey {0}', github.ref_name) || '' }}
           releaseDraft: true
           args: ${{ matrix.args }}
 
@@ -182,7 +188,12 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: ./backend
-          push: true
+          # Same guard as the desktop job. `push: true` on a manual dispatch would
+          # publish ghcr.io/.../osprey:main AND overwrite :latest from an untagged
+          # commit. On a dry run the image is loaded locally instead, so the SBOM
+          # step below still has something real to scan.
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          load: ${{ !startsWith(github.ref, 'refs/tags/') }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/osprey:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/osprey:latest
