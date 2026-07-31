@@ -104,6 +104,10 @@ jobs:
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -uo pipefail
           disable() {
@@ -136,6 +140,21 @@ jobs:
                -T /usr/bin/codesign >/dev/null 2>&1; then
             echo "Apple certificate imported cleanly; signing enabled."
             echo "signing=true" >> "$GITHUB_OUTPUT"
+            # Export the Apple variables into the job environment ONLY here.
+            #
+            # They cannot be gated in the build step's `env:` block: an expression
+            # yielding '' still DEFINES the variable, and the Tauri bundler checks
+            # whether APPLE_CERTIFICATE exists rather than whether it is non-empty.
+            # An empty-but-defined variable therefore still triggers `security
+            # import`, which then fails on nothing — the exact failure this step
+            # was written to prevent. Writing them here means that when signing is
+            # off, they are genuinely absent.
+            for var in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+                       APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+              value=$(printenv "$var" || true)
+              [ -n "$value" ] || continue
+              printf '%s<<OSPREY_EOF\n%s\nOSPREY_EOF\n' "$var" "$value" >> "$GITHUB_ENV"
+            done
           else
             security delete-keychain "$kc" >/dev/null 2>&1 || true
             disable "APPLE_CERTIFICATE could not be imported (bad PKCS#12, or APPLE_CERTIFICATE_PASSWORD is wrong)"
@@ -150,17 +169,11 @@ jobs:
           # Tauri updater signing (generate: `npm run tauri signer generate`).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Apple codesign + notarization, passed only when the probe above proved
-          # the certificate imports. tauri-action skips signing when these are
-          # empty, so an unusable certificate degrades to an unsigned build rather
-          # than killing the job. Notarization is gated on the same flag: it cannot
-          # succeed without a signed app.
-          APPLE_CERTIFICATE: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_CERTIFICATE || '' }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
-          APPLE_ID: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_TEAM_ID || '' }}
+          # No APPLE_* entries here on purpose. The probe step exports them into the
+          # job environment only when the certificate actually imports; listing them
+          # here with a conditional expression would define them as empty strings,
+          # and an empty-but-defined APPLE_CERTIFICATE still sends the bundler down
+          # the codesign path.
         with:
           projectPath: clients/desktop
           # Publish only on a tag push. Without this guard a manual workflow_dispatch
@@ -185,6 +198,24 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # A release tags the image with the version and moves :latest. A dry run must
+      # do neither — and cannot reuse github.ref_name, because branch names may
+      # contain '/', which is not a legal Docker tag ("invalid reference format").
+      - name: Decide image tags
+        id: img
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="ghcr.io/${GITHUB_REPOSITORY_OWNER}/osprey"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            printf 'primary=%s:%s\n' "$repo" "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            printf 'tags<<EOF\n%s:%s\n%s:latest\nEOF\n' \
+              "$repo" "$GITHUB_REF_NAME" "$repo" >> "$GITHUB_OUTPUT"
+          else
+            printf 'primary=%s:dryrun\n' "$repo" >> "$GITHUB_OUTPUT"
+            printf 'tags=%s:dryrun\n' "$repo" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: docker/build-push-action@v7
         with:
           context: ./backend
@@ -194,13 +225,11 @@ jobs:
           # step below still has something real to scan.
           push: ${{ startsWith(github.ref, 'refs/tags/') }}
           load: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/osprey:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/osprey:latest
+          tags: ${{ steps.img.outputs.tags }}
       - name: SBOM (Syft)
         uses: anchore/sbom-action@v0
         with:
-          image: ghcr.io/${{ github.repository_owner }}/osprey:${{ github.ref_name }}
+          image: ${{ steps.img.outputs.primary }}
           format: spdx-json
           output-file: osprey-image-sbom.spdx.json
       - uses: actions/upload-artifact@v4
