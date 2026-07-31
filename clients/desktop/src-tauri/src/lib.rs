@@ -99,7 +99,10 @@ fn spawn_backend(app: &tauri::AppHandle) -> Result<String, String> {
         .resolve(BACKEND_EXE, tauri::path::BaseDirectory::Resource)
         .map_err(|e| format!("backend not bundled: {e}"))?;
     if !exe.exists() {
-        return Err(format!("backend missing from the bundle at {}", exe.display()));
+        return Err(format!(
+            "backend missing from the bundle at {}",
+            exe.display()
+        ));
     }
     // Shell::command takes the program as a string, not a path.
     let program = exe.to_string_lossy().to_string();
