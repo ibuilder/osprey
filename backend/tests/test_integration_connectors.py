@@ -11,8 +11,10 @@ from __future__ import annotations
 import re
 
 import httpx
+import pytest
 import respx
 
+from osprey.config import settings
 from osprey.connectors.base import Connection as ConnView
 from osprey.connectors.gmail import GmailConnector
 from osprey.connectors.outlook import OutlookConnector
@@ -192,3 +194,75 @@ async def test_procore_poll_iterates_resources(session):
     created = await ingest_events(session, connector, conn, events)
     assert len(created) == 2
     assert any(e.amount == 45000 for e in events)
+
+
+@respx.mock
+async def test_procore_poll_raises_when_throttled(session, monkeypatch):
+    """A sustained 429 must fail the poll, not quietly report an empty source.
+
+    This is the regression that motivated the shared HTTP layer: the poller used
+    to `continue` on any non-200, so being rate-limited was indistinguishable
+    from a project with no RFIs — the connection stayed green and the hotlist
+    silently went stale.
+    """
+    # One attempt, so the test does not sit through the retry backoff.
+    monkeypatch.setattr(settings, "connector_max_attempts", 1)
+    respx.get(re.compile(r"https://api\.procore\.com/rest/v1\.1/.*")).mock(
+        return_value=httpx.Response(429, headers={"Retry-After": "60"})
+    )
+
+    connector = ProcoreConnector()
+    view = ConnView(
+        id="c1", source_type="procore", account_ref="company-1", tokens={"access_token": "t"}
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        [ev async for ev in connector.poll(view, None)]
+
+
+@respx.mock
+async def test_procore_poll_skips_a_forbidden_resource(session):
+    """A company that doesn't licence one module must not lose the others."""
+
+    def router(request: httpx.Request) -> httpx.Response:
+        if "/invoices" in str(request.url):
+            return httpx.Response(403, json={"errors": "not licensed"})
+        if "/rfis" in str(request.url):
+            return httpx.Response(200, json=[{"id": 1, "number": "RFI-1", "subject": "Spacing"}])
+        return httpx.Response(200, json=[])
+
+    respx.get(re.compile(r"https://api\.procore\.com/rest/v1\.1/.*")).mock(side_effect=router)
+
+    connector = ProcoreConnector()
+    view = ConnView(
+        id="c1", source_type="procore", account_ref="company-1", tokens={"access_token": "t"}
+    )
+
+    events = [ev async for ev in connector.poll(view, None)]
+    assert {e.external_id for e in events} == {"procore:rfis:1"}
+
+
+@respx.mock
+async def test_procore_poll_follows_pagination(session):
+    """A full page means there is more to fetch; a short page ends the walk."""
+    pages: dict[int, list[dict]] = {
+        1: [{"id": i, "number": f"RFI-{i}", "subject": f"Item {i}"} for i in range(50)],
+        2: [{"id": 100, "number": "RFI-100", "subject": "Last one"}],
+    }
+
+    def router(request: httpx.Request) -> httpx.Response:
+        if "/rfis" not in str(request.url):
+            return httpx.Response(200, json=[])
+        page = int(request.url.params.get("page", 1))
+        return httpx.Response(200, json=pages.get(page, []))
+
+    respx.get(re.compile(r"https://api\.procore\.com/rest/v1\.1/.*")).mock(side_effect=router)
+
+    connector = ProcoreConnector()
+    view = ConnView(
+        id="c1", source_type="procore", account_ref="company-1", tokens={"access_token": "t"}
+    )
+
+    events = [ev async for ev in connector.poll(view, None)]
+    assert len(events) == 51
+    assert "procore:rfis:100" in {e.external_id for e in events}

@@ -18,6 +18,7 @@ from ...models import SourceKind, utcnow
 from ...normalize import clean_text
 from ..base import Connection as ConnView
 from ..base import Connector, Health, NormalizedSignal, RawEvent, registry
+from ..http import connector_client
 
 API = "https://gmail.googleapis.com/gmail/v1"
 GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -109,7 +110,7 @@ class GmailConnector(Connector):
     async def poll(self, conn: ConnView, since: datetime | None) -> AsyncIterator[RawEvent]:
         token = await self._access_token(conn)
         headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(timeout=60, headers=headers) as client:
+        async with connector_client("gmail", timeout=60, headers=headers) as client:
             listing = await client.get(
                 f"{API}/users/me/messages", params={"q": "newer_than:7d", "maxResults": 50}
             )

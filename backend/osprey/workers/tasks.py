@@ -11,7 +11,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..connectors.service import get_connector, to_view
+from ..connectors.service import get_connector, sync_subscription, to_view
 from ..engine.hotlist import build_hotlist, run_pipeline
 from ..engine.ingest import ingest_events
 from ..models import Connection, ConnectionStatus, utcnow
@@ -99,13 +99,11 @@ async def renew_subscriptions(session: AsyncSession, *, notify_base: str = "") -
     )
     renewed = 0
     for row in rows:
-        connector = get_connector(row.source_type)
-        if not getattr(connector, "supports_subscriptions", False):
-            continue
-        notify_url = f"{notify_base}/webhooks/{row.source_type}?connection_id={row.id}"
         try:
-            sub_id = await connector.ensure_subscription(to_view(row), notify_url)
-            if sub_id:
+            # sync_subscription persists the subscription id back onto the
+            # connection. Without that, every renewal would create a fresh
+            # subscription instead of extending the existing one.
+            if await sync_subscription(session, row, notify_base=notify_base):
                 renewed += 1
         except Exception as exc:  # noqa: BLE001 - one source failing != system down
             log.warning("subscription renewal failed for %s: %s", row.id, exc)

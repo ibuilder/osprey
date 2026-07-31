@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     procore_base_url: str = "https://api.procore.com"
     webhook_hmac_secret: str = "dev-only-insecure-change-me"
 
+    # Poller pacing. Providers meter per OAuth app, so these are process-wide per
+    # source_type; see connectors/http.py. Deliberately conservative — being slow
+    # costs a poll cycle, being throttled costs the whole connection.
+    connector_rate_per_sec: float = 5.0
+    connector_rate_burst: float = 10.0
+    connector_max_attempts: int = 4
+
     # ---- Script tasks (user-authored Python background jobs) -----------------
     scripts_enabled: bool = True
     scripts_max_timeout_seconds: int = 60
