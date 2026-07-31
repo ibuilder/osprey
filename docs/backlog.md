@@ -53,26 +53,31 @@ but it is no longer the only line of defence.
 
 ## ~~Self-contained desktop build~~ — done
 
-Resolved. The desktop bundle now ships the backend as a Tauri **sidecar**: the backend
-is frozen with PyInstaller (`backend/packaging/osprey-backend.spec`), declared as
-`externalBin`, and spawned by the Rust shell on a free loopback port at startup —
-Tauri terminates it with the app. `osprey/local.py` decides everything about running
-privately (per-user app-data directory, secrets generated once on first run, SQLite,
-offline AI provider), so that logic stays in Python where it is tested
-(`tests/test_local_mode.py`).
+Resolved. The desktop bundle now ships the backend with it: the backend is frozen with
+PyInstaller (`backend/packaging/osprey-backend.spec`), bundled as a Tauri **resource**,
+and spawned by the Rust shell on a free loopback port at startup — Tauri terminates it
+with the app. `osprey/local.py` decides everything about running privately (per-user
+app-data directory, secrets generated once on first run, SQLite, offline AI provider),
+so that logic stays in Python where it is tested (`tests/test_local_mode.py`).
 
 The sign-in screen adopts the bundled backend's URL automatically and says so. If no
-sidecar is present — running the frontend in a browser, or a build without it — the
+backend is present — running the frontend in a browser, or a build without it — the
 Backend URL field stays editable, so pointing the app at a shared server still works.
 
 Verified locally on Windows: the frozen binary starts standalone, registers all seven
 connectors, ingests a notice-of-delay email, scores it 91 / act-today / $180,000, and
 produces valid PDF and XLSX exports.
 
-Cost, as predicted: the sidecar is ~36 MB, so the installer grows from 3.8 MB. Two
-caveats remain — PyInstaller binaries draw antivirus false positives on Windows, and
-the sidecar is only built in the release workflow, so `npm run tauri dev` still needs
-a backend started by hand (or `python -m osprey.local`).
+Cost, as predicted: the backend is ~36 MB, so the installer grows from 3.8 MB. It is a
+**directory** build rather than `--onefile`, deliberately: onefile unpacks the whole
+interpreter to a temp directory on every launch, which is both a common antivirus
+heuristic trigger and a per-start cost. The remaining caveat is that the backend is
+only built in the release workflow, so `npm run tauri dev` still needs a backend
+started by hand (or `python -m osprey.local`).
+
+Unsigned Windows installers still trip SmartScreen. See [code-signing.md](code-signing.md)
+— SignPath Foundation signs open-source projects for free, and that application is the
+next step.
 
 ## What is *not* covered by CI
 

@@ -75,6 +75,17 @@ fn backend_status(sidecar: State<Sidecar>) -> serde_json::Value {
     serde_json::json!({ "status": status, "url": sidecar.url.lock().unwrap().clone() })
 }
 
+/// Where the frozen backend lives inside the bundle.
+///
+/// It ships as a PyInstaller *directory* build rather than a single self-extracting
+/// executable: onefile unpacks the interpreter to a temp dir on every launch, which
+/// antivirus engines flag and which costs a second or two of cold start. So the
+/// backend is a bundled resource, not a Tauri `externalBin`.
+#[cfg(target_os = "windows")]
+const BACKEND_EXE: &str = "backend/osprey-backend.exe";
+#[cfg(not(target_os = "windows"))]
+const BACKEND_EXE: &str = "backend/osprey-backend";
+
 /// Start the bundled backend on a free loopback port.
 ///
 /// The child handle is stored in `Sidecar` so it can be killed on exit — dropping it
@@ -83,8 +94,18 @@ fn backend_status(sidecar: State<Sidecar>) -> serde_json::Value {
 fn spawn_backend(app: &tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_shell::ShellExt;
 
+    let exe = app
+        .path()
+        .resolve(BACKEND_EXE, tauri::path::BaseDirectory::Resource)
+        .map_err(|e| format!("backend not bundled: {e}"))?;
+    if !exe.exists() {
+        return Err(format!("backend missing from the bundle at {}", exe.display()));
+    }
+    // Shell::command takes the program as a string, not a path.
+    let program = exe.to_string_lossy().to_string();
+
     // free_port() is inherently racy: the probe listener is released before the
-    // sidecar binds, so another process can take the port in between. Rather than
+    // backend binds, so another process can take the port in between. Rather than
     // fail cryptically, try a few times.
     let mut last_err = String::new();
     for attempt in 1..=3 {
@@ -93,8 +114,7 @@ fn spawn_backend(app: &tauri::AppHandle) -> Result<String, String> {
 
         let spawned = app
             .shell()
-            .sidecar("osprey-backend")
-            .map_err(|e| format!("sidecar not bundled: {e}"))?
+            .command(&program)
             .args(["--port", &port.to_string()])
             .spawn();
 

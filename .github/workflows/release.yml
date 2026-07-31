@@ -50,9 +50,10 @@ jobs:
 
       - run: npm ci
 
-      # Freeze the backend and drop it in as a Tauri sidecar, so the installer needs
-      # no Python and no Docker on the user's machine. Tauri resolves externalBin by
-      # target triple, hence the rename.
+      # Freeze the backend and bundle it as a Tauri resource, so the installer needs
+      # no Python and no Docker on the user's machine. This is a PyInstaller directory
+      # build, not a single self-extracting binary — see packaging/osprey-backend.spec
+      # for why (antivirus false positives and cold-start cost).
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -64,10 +65,9 @@ jobs:
           pip install -c constraints.txt -e . pyinstaller
           pyinstaller packaging/osprey-backend.spec --noconfirm \
             --distpath dist-sidecar --workpath build-sidecar
-          # Tauri resolves externalBin by the TARGET triple, which is not always the
-          # host: the macOS matrix cross-builds x86_64 on an arm64 runner. PyInstaller
-          # cannot cross-freeze, so name the binary for whichever target this job
-          # builds and let a mismatched pair fail loudly here rather than at bundle time.
+          # PyInstaller cannot cross-freeze, and the macOS matrix cross-builds x86_64
+          # on an arm64 runner. Fail loudly here rather than shipping a bundle whose
+          # backend cannot run on the target it was built for.
           TARGET="${MATRIX_ARGS#--target }"
           TRIPLE="${TARGET:-$(rustc -vV | sed -n 's/^host: //p')}"
           HOST=$(rustc -vV | sed -n 's/^host: //p')
@@ -76,13 +76,17 @@ jobs:
                  "PyInstaller does not cross-compile. Build this target on its own runner."
             exit 1
           fi
-          mkdir -p ../clients/desktop/src-tauri/binaries
-          if [ -f dist-sidecar/osprey-backend.exe ]; then
-            cp dist-sidecar/osprey-backend.exe "../clients/desktop/src-tauri/binaries/osprey-backend-${TRIPLE}.exe"
-          else
-            cp dist-sidecar/osprey-backend "../clients/desktop/src-tauri/binaries/osprey-backend-${TRIPLE}"
-          fi
-          ls -la ../clients/desktop/src-tauri/binaries/
+          DEST=../clients/desktop/src-tauri/binaries/osprey-backend
+          rm -rf "$DEST"
+          mkdir -p "$(dirname "$DEST")"
+          cp -R dist-sidecar/osprey-backend "$DEST"
+          # The bundle is worthless without the executable, and a resource that is
+          # merely missing produces a confusing runtime error instead of a build one.
+          test -x "$DEST/osprey-backend" || test -f "$DEST/osprey-backend.exe" || {
+            echo "::error::PyInstaller produced no osprey-backend executable in $DEST"
+            exit 1
+          }
+          du -sh "$DEST"
         env:
           MATRIX_ARGS: ${{ matrix.args }}
 
