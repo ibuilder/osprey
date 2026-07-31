@@ -90,6 +90,59 @@ jobs:
         env:
           MATRIX_ARGS: ${{ matrix.args }}
 
+      # Decide whether Apple signing can actually work, BEFORE committing the build
+      # to it. A malformed or wrong-password APPLE_CERTIFICATE makes tauri-action
+      # abort with "failed to import keychain certificate", which took out both
+      # macOS jobs for the whole v0.2.1 release — the release still published from
+      # the jobs that passed, so it shipped with no macOS artifacts and nothing
+      # said so. An unsigned macOS build is a worse artifact than a signed one;
+      # no macOS artifact at all is worse than both.
+      - name: Probe the Apple signing certificate
+        id: apple
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -uo pipefail
+          disable() {
+            echo "::warning::$1 — building macOS UNSIGNED. Users will see Gatekeeper's" \
+                 "'unidentified developer' prompt. Fix or delete the APPLE_CERTIFICATE secret."
+            echo "signing=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          [ -n "${APPLE_CERTIFICATE:-}" ] || disable "no APPLE_CERTIFICATE secret is set"
+
+          tmp=$(mktemp -d)
+          # openssl rather than base64(1): the decode flag is spelled --decode on GNU
+          # and -D on BSD/macOS, and guessing wrong here would report a perfectly good
+          # certificate as malformed and quietly ship unsigned.
+          printf '%s' "$APPLE_CERTIFICATE" | openssl base64 -d -A > "$tmp/cert.p12" 2>/dev/null \
+            || disable "APPLE_CERTIFICATE is not valid base64"
+          [ -s "$tmp/cert.p12" ] || disable "APPLE_CERTIFICATE decodes to an empty file"
+
+          # Import into a throwaway keychain: the same operation tauri-action does,
+          # so this either proves it works or explains why it will not.
+          kc="$tmp/probe.keychain-db"
+          security create-keychain -p probe-password "$kc" >/dev/null 2>&1 \
+            || disable "could not create a probe keychain"
+          # A locked keychain would fail the import for a reason that has nothing to
+          # do with the certificate, and this probe must not produce false negatives:
+          # wrongly reporting a good certificate as bad would silently ship unsigned.
+          security unlock-keychain -p probe-password "$kc" >/dev/null 2>&1 \
+            || disable "could not unlock the probe keychain"
+          if security import "$tmp/cert.p12" -k "$kc" -P "${APPLE_CERTIFICATE_PASSWORD:-}" \
+               -T /usr/bin/codesign >/dev/null 2>&1; then
+            echo "Apple certificate imported cleanly; signing enabled."
+            echo "signing=true" >> "$GITHUB_OUTPUT"
+          else
+            security delete-keychain "$kc" >/dev/null 2>&1 || true
+            disable "APPLE_CERTIFICATE could not be imported (bad PKCS#12, or APPLE_CERTIFICATE_PASSWORD is wrong)"
+          fi
+          security delete-keychain "$kc" >/dev/null 2>&1 || true
+          rm -rf "$tmp"
+
       - name: Build + sign + release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -97,13 +150,17 @@ jobs:
           # Tauri updater signing (generate: `npm run tauri signer generate`).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Apple notarization / codesign (macOS).
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Apple codesign + notarization, passed only when the probe above proved
+          # the certificate imports. tauri-action skips signing when these are
+          # empty, so an unusable certificate degrades to an unsigned build rather
+          # than killing the job. Notarization is gated on the same flag: it cannot
+          # succeed without a signed app.
+          APPLE_CERTIFICATE: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ steps.apple.outputs.signing == 'true' && secrets.APPLE_TEAM_ID || '' }}
         with:
           projectPath: clients/desktop
           tagName: ${{ github.ref_name }}
