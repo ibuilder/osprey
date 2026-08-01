@@ -24,7 +24,11 @@ jobs:
           # this job could only ever fail — which it silently did, hidden behind an
           # earlier codesign failure, for every release since the backend became a
           # bundled sidecar.
-          - os: macos-13
+          #
+          # Must be one of the *-intel labels: macos-13 was retired, and an unknown
+          # label does not fail the job, it queues forever waiting for a runner that
+          # will never exist.
+          - os: macos-15-intel
             args: "--target x86_64-apple-darwin"
           - os: ubuntu-22.04
             args: ""
