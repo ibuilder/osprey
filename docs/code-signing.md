@@ -65,6 +65,24 @@ Two things to get right:
    installer leaves an unsigned executable that antivirus can still flag, so
    sign the backend before Tauri bundles it.
 
+## macOS
+
+macOS is unsigned too, and Gatekeeper is stricter about it than SmartScreen: an
+unsigned `.dmg` needs right-click → *Open* rather than a double-click.
+
+Signing macOS needs a paid Apple Developer Program membership ($99/year) — there
+is no free-for-open-source equivalent of SignPath here. Set `APPLE_CERTIFICATE`
+(base64 PKCS#12), `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY` as
+repository secrets, plus `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` for
+notarization, and the release workflow picks them up automatically.
+
+Until then the build degrades gracefully rather than failing: a probe step in
+`release.yml` tries the certificate import into a throwaway keychain, and only
+exports the Apple variables when it succeeds. **The variables must be absent, not
+empty** — the Tauri bundler checks whether `APPLE_CERTIFICATE` exists rather than
+whether it has content, so setting it to `''` still sends it down the codesign
+path and fails there.
+
 ## In the meantime
 
 Until signing is in place, mitigations already applied:
