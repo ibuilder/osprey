@@ -79,10 +79,50 @@ Unsigned Windows installers still trip SmartScreen. See [code-signing.md](code-s
 — SignPath Foundation signs open-source projects for free, and that application is the
 next step.
 
+## ~~The release workflow could not be tested~~ — done
+
+`release.yml` runs only on a tag, so for a long time the only way to find out whether
+it worked was to publish. It shipped broken twice that way — v0.2.0's CSP/CORS, and
+v0.2.1 quietly producing **no macOS artifacts at all** (`fail-fast: false` lets the
+passing jobs create the release, so a half-failed run still looks like a release).
+
+A manual dispatch is now a genuine dry run. Both the desktop `tagName`/`releaseName`
+and the image `push:` are gated on `startsWith(github.ref, 'refs/tags/')`, so:
+
+```bash
+gh workflow run release.yml --ref my-branch
+```
+
+builds every platform, signs nothing, and publishes nothing. **Do this before tagging.**
+Previously a dispatch would have created a draft release named after the branch
+("Osprey main") *and* pushed `ghcr.io/.../osprey:main` over `:latest` — which is exactly
+why nobody ever ran one.
+
+Its first three runs each caught a defect no CI job could reach:
+
+1. **An empty environment variable is still a defined one.** Gating the Apple secrets
+   with `${{ cond && secrets.X || '' }}` set them to `''`, and the Tauri bundler checks
+   whether `APPLE_CERTIFICATE` *exists*, not whether it has content — so it still ran
+   `security import`, on nothing. The probe step now writes those variables into
+   `$GITHUB_ENV` only when the certificate really imports.
+2. **`github.ref_name` is not a valid Docker tag on a branch** — branch names may contain
+   `/`, giving `invalid reference format`. Image tags are computed explicitly now.
+3. **`macos-latest` is Apple silicon**, and PyInstaller cannot cross-freeze, so the
+   `x86_64-apple-darwin` job could never build a backend for its own target. That guard
+   had been firing correctly and invisibly for months, hidden behind the codesign failure
+   ahead of it. The Intel bundle now builds on `macos-13`.
+
+`actionlint` also became a CI job: `release.yml` contains a bash certificate probe and
+several expression guards that never execute on a push, so expression type-checking and
+shellcheck are the only cheap coverage available for it.
+
 ## What is *not* covered by CI
 
 Worth stating plainly, since the pipeline is otherwise thorough:
 
+- **No installer is ever built or launched by CI.** The release dry run builds bundles,
+  but nothing installs one and confirms the app starts and finds its bundled backend.
+  That remains a manual check against a draft release.
 - **kind is not production.** `deploy-smoke` validates wiring, hook ordering,
   migrations, and that RLS enforces. It does not exercise ingress/TLS, storage
   classes, resource limits under load, or a managed database's specifics.

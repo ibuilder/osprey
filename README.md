@@ -121,8 +121,13 @@ Postgres + pgvector, and Redis. This is what production looks like.
 ### Then the desktop app
 
 Grab an installer from [Releases](https://github.com/ibuilder/osprey/releases) —
-Windows `.exe`/`.msi` and Linux `.deb`/`.rpm`/`.AppImage`. macOS builds need Apple
-signing certificates that aren't configured yet, so build from source there:
+Windows `.exe`/`.msi`, macOS `.dmg` (Apple silicon and Intel), and Linux
+`.deb`/`.rpm`/`.AppImage`.
+
+Nothing is code-signed yet, so the first launch takes an extra click: Windows
+SmartScreen needs *More info → Run anyway*, and macOS Gatekeeper needs
+right-click → *Open*. See [docs/code-signing.md](docs/code-signing.md) for where
+that stands. To build from source instead:
 
 ```bash
 cd clients/desktop && npm install && npm run tauri dev   # needs the Rust toolchain
