@@ -63,7 +63,7 @@ jobs:
       # no Python and no Docker on the user's machine. This is a PyInstaller directory
       # build, not a single self-extracting binary — see packaging/osprey-backend.spec
       # for why (antivirus false positives and cold-start cost).
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Build the backend sidecar
