@@ -53,7 +53,7 @@ jobs:
 
       - name: Upload coverage
         if: matrix.python == '3.12'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-xml
           path: backend/coverage.xml
@@ -396,7 +396,7 @@ jobs:
           docker build -t osprey:ci ./backend
           trivy image --severity HIGH,CRITICAL --exit-code 0 --no-progress osprey:ci
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: osprey-sbom.spdx.json
