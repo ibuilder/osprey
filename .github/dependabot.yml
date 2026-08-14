@@ -8,6 +8,18 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # pydantic pins pydantic-core to an exact version, so a standalone bump of it
+    # can never resolve:
+    #
+    #     pydantic 2.13.4 depends on pydantic-core==2.46.4
+    #     The user requested (constraint) pydantic-core==2.48.0
+    #     ERROR: ResolutionImpossible
+    #
+    # Dependabot has produced that unmergeable PR twice (#14, #30). pydantic-core
+    # moves when pydantic moves; ignoring it here does not skip the upgrade, it
+    # just stops the two being proposed separately.
+    ignore:
+      - dependency-name: "pydantic-core"
     groups:
       backend-minor-patch:
         patterns: ["*"]
