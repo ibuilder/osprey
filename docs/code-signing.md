@@ -8,6 +8,31 @@ single largest adoption barrier — it is exactly the moment a cautious user sto
 This page records the plan, so whoever picks it up does not have to re-do the
 research.
 
+## What *is* signed today
+
+Three things already protect a download, and it is worth being precise about what
+each one does, because they are often conflated:
+
+| | What it proves | What it does not |
+| --- | --- | --- |
+| **Updater signature** (minisign, `TAURI_SIGNING_PRIVATE_KEY`) | every update an installed copy applies came from the holder of the private key | nothing at install time — the first download is not covered |
+| **`SHA256SUMS.txt`** | the bytes you downloaded are the bytes that were published | nothing about *who* published them |
+| **Build provenance** (`actions/attest-build-provenance`) | these artefacts were built by this workflow, from this commit, recorded in a public transparency log | nothing the OS consults — SmartScreen and Gatekeeper do not read it |
+
+Only an Authenticode/Apple certificate removes the OS warning. That is what the
+rest of this page is about.
+
+The updater key is not optional. `tauri.conf.json` ships a committed public key
+and sets `createUpdaterArtifacts`, so an installed copy verifies every update
+against it. A release signed with a *different* key produces an app that can
+never update again, and the only symptom is silence — which is why
+`release.yml` refuses to build without the key rather than discovering it twenty
+minutes in. Verify provenance with:
+
+```bash
+gh attestation verify Osprey_0.2.2_x64-setup.exe --repo ibuilder/osprey
+```
+
 ## What changed in 2024, and why it matters
 
 Extended Validation (EV) certificates used to grant an instant SmartScreen
@@ -94,3 +119,11 @@ Until signing is in place, mitigations already applied:
 
 If a specific antivirus vendor flags a release, submit it as a false positive —
 most vendors have a form for this and turn them around in a few days.
+
+## Generating and storing the keys
+
+See [`docs/signing-keys.md`](signing-keys.md) for the one-time key generation and
+the exact secret names. Short version: the updater key is generated once, backed
+up offline, and pasted into repository secrets — it never lives on a developer
+machine after that, and it is never passed to a third-party action that could log
+it.

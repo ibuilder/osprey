@@ -116,6 +116,225 @@ Its first three runs each caught a defect no CI job could reach:
 several expression guards that never execute on a push, so expression type-checking and
 shellcheck are the only cheap coverage available for it.
 
+## ~~Coverage was measuring greenlet-switching, not testing~~ — fixed
+
+The coverage gate was quietly wrong, in a way that punished exactly the code most
+worth testing.
+
+SQLAlchemy's async layer runs database I/O inside greenlets (`greenlet_spawn`).
+Coverage's tracer does not follow a greenlet switch unless told to, so every line
+after an `await session.execute(...)` in a given frame was recorded as
+unexecuted. `security/sessions.py` reported **42%** while its tests demonstrably
+drove every branch — a probe confirmed `rotate()` ran and returned 200 while
+coverage insisted its body never executed.
+
+The tell was line numbers in the raw coverage data (`1973`, `1992`) that exceed
+the file's length.
+
+Fixed by `concurrency = ["thread", "greenlet"]` in `[tool.coverage.run]`. Same
+tests, same code: sessions.py went 42% → 77%. `greenlet` is already a pinned
+SQLAlchemy dependency, so this costs nothing.
+
+**Worth knowing:** the historical ~79% figure was an undercount of DB-heavy
+modules and an accurate count of everything else, so it is not comparable
+like-for-like with numbers measured after this change.
+
+## ~~The live-hotlist WebSocket authorized nobody~~ — fixed
+
+`/ws/projects/{project_id}/hotlist` decoded the bearer token and accepted the
+socket. It never checked that the project belonged to the token's org, so any
+authenticated user of any tenant could subscribe to any project's live hotlist by
+knowing (or guessing) its id — a cross-tenant leak straight past the boundary
+row-level security exists to hold, because the socket never issued the scoped
+query that RLS would have filtered.
+
+The endpoint now confirms the subject still exists, is still active, still carries
+a current `token_version`, and that the project is in their org, and fails closed
+if any check cannot be completed. Every refusal uses the same close code, so a
+caller cannot use the response to enumerate project ids.
+
+Found while auditing what the new token-revocation check had *not* been applied
+to. Worth remembering as a class: a second authentication path added for a
+transport's convenience is a second place for the authorization rules to be
+missing.
+
+## SSO redirects: why the desktop app uses a loopback
+
+Worth writing down, because the first cut of the SSO config was wrong in a way
+that would only have surfaced against a real IdP.
+
+`OSPREY_OIDC_REDIRECT_URL` was documented as `{public_base_url}/auth/sso/callback`
+— an Osprey API path. It cannot be: that endpoint is a `POST` taking `{code,
+state}` as JSON, and a provider redirects a browser with a `GET` and query
+parameters. There is no GET handler and there should not be one; keeping the code
+out of the API's access log and out of a browser history entry pointing at the
+API is the reason the endpoint is shaped this way.
+
+So the redirect target is the **client's** own callback route. The client reads
+`code` and `state` off its query string and posts them.
+
+For the desktop app there is no such route, so it does what RFC 8252 prescribes
+for native apps: bind an ephemeral loopback port per sign-in and pass it on
+`/auth/sso/start`. That means the server has to accept a caller-supplied
+`redirect_uri`, which is only safe with validation — `oidc.allowed_redirect_uri`
+permits the configured URL or a literal loopback address and nothing else. Notably
+`localhost` is **refused**: it resolves through host name resolution another
+process can influence, whereas `127.0.0.1` and `[::1]` cannot be redirected. The
+value used on `/authorize` is sealed into the signed state and reused for the
+token exchange, so the two cannot be decoupled by a later request.
+
+### The connector flow had the same hole, and a worse one — both fixed
+
+Auditing `POST /connections/authorize` for the same issue turned up two:
+
+1. It accepted `redirect_uri` unvalidated and signed it straight into the state.
+2. `/connections/exchange` then resolved it as
+   `body.redirect_uri or claims["redirect_uri"]` — **the request body won over the
+   signed state.** Sealing the value at authorize time was therefore decorative:
+   a caller could start a flow with one redirect and exchange with another.
+
+Both now behave like the SSO flow. The loopback rule lives in
+`security/oauth.py` (`assert_loopback_redirect`) and is shared by both; the
+exchange takes the redirect from the state only, and rejects a mismatched body
+value rather than ignoring it, so a client bug surfaces instead of being papered
+over.
+
+`test_exchange_will_not_let_the_body_override_the_signed_state` fails against the
+old `or` expression, which is the check worth having: the fix is one line and the
+test is the only thing that would notice it being undone.
+
+## The worker's failure handling was untested
+
+`workers/tasks.py` sat at 51% coverage. What was missing was not the happy path
+— that runs on every ingest test — but the failure handling, which is the part
+that actually earns the module its place:
+
+- `poll_connection` catching a provider error, degrading *that* connection and
+  leaving the rest alone (the SPEC golden rule "one source down != system down");
+- `poll_all_active` skipping revoked connections but still retrying degraded ones;
+- `renew_subscriptions` continuing the batch when one tenant's token has expired,
+  rather than losing every webhook to the first failure.
+
+All three are now asserted directly (`tests/test_worker_tasks.py`, 51% → 99%).
+Writing them surfaced one small real defect: the poll failure path logged the raw
+exception while storing a truncated copy, so a provider answering an outage with
+a megabyte of HTML would have written all of it to the log on every cycle, for
+every affected connection.
+
+**A trap for anyone extending these tests:** `poll_connection` mutates the row
+and leaves committing to its ARQ wrapper's `session_scope`. Calling
+`session.refresh()` on the connection without flushing first re-SELECTs the
+pre-poll row, so the assertion silently tests nothing. Three of these tests
+passed for the wrong reason before that was spotted.
+
+## Dependabot: two gaps it could not see
+
+Two things the dependency pipeline was not covering, both found by asking what
+Dependabot actually edits (it rewrites `backend/constraints.txt` and nothing else
+in that directory).
+
+**The container base image was unwatched.** There was no `docker` ecosystem
+entry, so `python:3.12-slim` was never proposed for a bump. The pipeline could
+already *see* the problem and not act on it: Trivy scans the built image, and its
+own comment in `ci.yml` says to treat base-image CVEs as "a signal to bump the
+base image" — while nothing generated that signal into a PR. Added, labelled
+`security`. `docker-compose.yml` is deliberately left out: its postgres/redis pins
+are local-dev infrastructure, and production points at managed services via Helm.
+
+**pip-audit never saw the production dependencies.** The step ran
+`pip install -c constraints.txt -e "."` — no extras — so asyncpg, arq, alembic,
+the AI SDKs, push and OTel, every dependency that exists *only* in the deployed
+image, was never scanned for advisories. Now audited with both constraint files
+and `[prod,ai,push,otel]`. Running it across the full pinned set for the first
+time reported **no known vulnerabilities**, so the gap had not yet cost anything.
+
+### And a mess this session created
+
+`constraints-prod.txt` is generated, and Dependabot resolves each manifest in
+isolation — it knows neither that the two pin files are applied together nor that
+one of them is not hand-edited. Left alone, its PRs would drift the pair apart.
+
+Rather than pretend Dependabot can maintain it, `backend/tools/regen_constraints.py`
+regenerates it from a `pip install --dry-run` resolve, and CI runs the same script
+with `--check`. A bump that leaves the prod pins stale, or that the two files
+cannot jointly resolve, now fails in the `postgres` job with a one-command fix
+instead of surfacing at image build time.
+
+Grouping was also tightened while there: GitHub Actions bumps arrived as six
+separate single-action PRs (#1, #4, #21, #22, #24, #25), which is noise rather
+than review, and the four coupled `tauri*` crates now move as a set — bumping one
+alone is how you get a shell that no longer compiles against its generated
+context.
+
+## Release verification, and the defect it found immediately
+
+The releases page shows that `.sig` files exist. It does not show **which key made
+them**, and that is the only question that matters: a release signed by a valid
+minisign key that is not the one compiled into the app produces installers that
+look perfect and an installed base that can never update again. The symptom is
+silence, months later, when nobody gets a new version.
+
+`scripts/verify_release.py` checks that, plus that every installer has a signature,
+that `latest.json` exists and names the tagged version, and that it covers every
+platform. It needs only the signatures and the manifest — a few kilobytes, not the
+37 MB installers — so `release.yml` runs it *before* anything is hashed or
+attested. A release that fails never gets a checksum file or an attestation
+vouching for it, and the draft stays unpublished.
+
+**It found a real defect on its first run against history.** Tag `v0.2.0` ships
+`Osprey_0.1.0_*` binaries: `tauri.conf.json` was never bumped before tagging, so
+the release contains the wrong software. The manifest is internally consistent and
+every signature is valid, which is exactly why nothing noticed. Live updates are
+unaffected — the updater endpoint resolves `/releases/latest/` to v0.2.1, which is
+correct — but anyone downloading "v0.2.0" gets 0.1.0, and if v0.2.1 were deleted
+or v0.2.0 re-marked latest, clients would be offered a downgrade. Left as-is
+deliberately: rewriting a published release breaks signatures for anyone
+mid-download. Rolling forward is the fix.
+
+**A trap for anyone extending the script.** A Tauri `.sig` asset is base64 of the
+*whole* minisign file, not the file itself. Skip that outer layer and you read
+`"untrusted comment"[2:10]` as the key id, which is literally the string
+`"trusted "` — it looks like a signature from the wrong key, for every asset at
+once. Also: minisign *displays* the key id byte-reversed, so
+`A00965EC709E29F9` and the raw `F9299E70EC6509A0` are the same key. Compare raw
+bytes, never the rendered hex.
+
+## Enterprise hardening — what was deliberately left out
+
+The production-readiness pass added SSO, SCIM, revocable sessions, rate limiting,
+retention, and erasure. These are the adjacent things it did **not** do, and why.
+
+**MFA / TOTP.** Not built. For an enterprise deployment the right answer is that
+the identity provider owns the second factor, which OIDC SSO now delegates
+properly; building a parallel TOTP enrolment inside Osprey would give operators a
+second, weaker place to get it wrong. Revisit if a customer needs MFA on local
+password accounts specifically.
+
+**SCIM `/Groups`.** Returns 501, not 404, so a connector probing for it gets an
+honest answer. Okta, Entra, and JumpCloud all drive full user lifecycle through
+`/Users` alone; mapping arbitrary IdP groups onto Osprey's four fixed roles would
+be a guess, and a wrong guess about role assignment is a privilege bug. Roles come
+from the SCIM `roles` attribute, clamped to the provisioning token's ceiling.
+
+**Per-IP blocklists.** The rate limiter is a fairness control, not a defence
+against a determined adversary — it fails *open* when its backend is unreachable,
+because a limiter that takes the API down with it has converted an availability
+control into an outage. Blocking belongs at the ingress or WAF.
+
+**Asynchronous tenant erasure.** `POST /orgs/current/delete` runs inline, in one
+transaction, so a failure rolls back cleanly and no worker is required (a
+self-hosted deployment may not run one). The `deletion_requested_at` flag and its
+423 response exist so that a tenant too large to erase inline has a state to sit
+in — the drain itself is not built.
+
+**Audit log truncation is indistinguishable from tampering.** Retention can purge
+a contiguous *prefix* of the hash chain, which leaves the remainder verifiable.
+But a chain whose oldest records are gone looks identical whether retention or an
+attacker removed them, so `verify_chain_detail` reports `anchored_at_genesis`
+rather than quietly passing a truncated chain as pristine. Deciding between the
+two requires shipping the log off-box; that is an operator choice, not something
+the application can settle for itself.
+
 ## What is *not* covered by CI
 
 Worth stating plainly, since the pipeline is otherwise thorough:
@@ -131,3 +350,17 @@ Worth stating plainly, since the pipeline is otherwise thorough:
   manual sandbox checklist.
 - **Real push delivery.** APNs/FCM/Web Push senders are unit-tested; nothing verifies a
   notification actually lands on a device.
+- **A real identity provider.** The SSO suite stands up a local RSA key and serves a
+  genuine JWKS document, so signature verification, `kid` lookup, and every claim
+  check run for real — but no test has ever talked to Entra, Okta, or Google. The
+  same is true of SCIM: the lifecycle is tested against the documents those
+  connectors send, not against the connectors.
+- **NetworkPolicy enforcement.** The chart renders and asserts the policies, and
+  `deploy-smoke` leaves them off, because kind's default CNI does not enforce
+  NetworkPolicy. A policy that silently does nothing is worse than none: it reads
+  like a control in a review. Verify it on a cluster running Calico or Cilium.
+- **Rate limiting across replicas.** The Redis backend is exercised by unit tests
+  against a real client; nothing runs two API replicas and proves one global budget.
+  With `rateLimitBackend: auto` and no Redis, each replica keeps its own counters —
+  the effective limit is N times the configured one, and the app says so in its
+  startup log rather than pretending otherwise.

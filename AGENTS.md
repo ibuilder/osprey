@@ -30,7 +30,7 @@ data sources and produces a prioritized, exportable hotlist. Read `SPEC.md` firs
 - `security/`        crypto (AES-GCM token vault), rbac, auth (JWT), audit log
 - `connectors/`      base ABC + registry; `filedrop/` universal fallback; `outlook/`
 - `normalize/`       raw payload -> Signal
-- `ai/`              LLM provider abstraction: deterministic (default) / claude / ollama
+- `ai/`              LLM provider abstraction: deterministic (default) / Codex / ollama
 - `engine/`          cluster, extract, score (explainable), hotlist builder
 - `exports/`         excel.py (openpyxl), pdf.py (reportlab)
 - `api/`             routers: health, auth, connections, hotlist, items, exports, webhooks
@@ -41,7 +41,7 @@ The whole pipeline runs OFFLINE and DETERMINISTICALLY:
 - Default AI provider is rule-based (`DeterministicProvider`) — no network, no keys.
 - Embeddings default to a deterministic `HashingEmbedder` — no model download.
 - Tests run on SQLite; embeddings clustered with in-process cosine similarity.
-This is why `pytest` passes with zero infrastructure. Postgres+pgvector and Claude
+This is why `pytest` passes with zero infrastructure. Postgres+pgvector and Codex
 are production opt-ins, selected purely by config.
 
 ## Workflow
