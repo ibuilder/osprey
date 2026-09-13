@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from osprey.config import settings
-from osprey.models import RefreshToken, User
+from osprey.models import Membership, RefreshToken, User
 from osprey.security.passwords import PasswordPolicyError, check_policy, needs_rehash
 
 GOOD = "Sup3rSecret!pass"
@@ -273,6 +273,11 @@ async def test_refresh_token_is_never_stored_in_plaintext(client, session):
 async def test_token_for_a_deleted_user_is_rejected(client, session):
     """A signature-valid token is not sufficient; the subject must still exist."""
     body = await _register(client, "ghost@example.com")
+    # Dependents first. Postgres enforces these foreign keys (SQLite, by default,
+    # does not), so deleting the user alone fails there with a violation on
+    # membership -- the test has to remove the user the way a real deletion must.
+    await session.execute(delete(RefreshToken).where(RefreshToken.user_id == body["user_id"]))
+    await session.execute(delete(Membership).where(Membership.user_id == body["user_id"]))
     user = await session.get(User, body["user_id"])
     await session.delete(user)
     await session.commit()
