@@ -26,6 +26,9 @@ import subprocess
 import sys
 import tempfile
 
+# Run as `python scripts/...`, so this directory is on sys.path.
+from verify_release import asset_name_for_url
+
 
 class Failure(Exception):
     """The manifest cannot be brought in line. The message is the report."""
@@ -56,10 +59,16 @@ def sync(tag: str, repo: str, *, dry_run: bool) -> list[str]:
             raise Failure(f"{tag} has no latest.json")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
+        assets = json.loads(gh("release", "view", tag, "--repo", repo, "--json", "assets").stdout)[
+            "assets"
+        ]
         for platform, entry in (manifest.get("platforms") or {}).items():
-            name = str(entry.get("url", "")).rsplit("/", 1)[-1]
+            url = str(entry.get("url", ""))
+            name = asset_name_for_url(url, assets)
+            if not name:
+                raise Failure(f"{platform}: {url!r} is not an asset of {tag}")
             sig_path = work / f"{name}.sig"
-            if not name or not sig_path.exists():
+            if not sig_path.exists():
                 raise Failure(f"{platform}: no published signature for {name!r}")
             published = sig_path.read_text(encoding="utf-8").strip()
             if entry.get("signature", "").strip() != published:

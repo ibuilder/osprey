@@ -91,13 +91,23 @@ class OpenAIProvider(LLMProvider):
     def __init__(
         self, *, api_key: str | None = None, model: str | None = None, base_url: str | None = None
     ) -> None:
-        from openai import AsyncOpenAI  # imported lazily
-
-        key = api_key or settings.anthropic_api_key  # falls back only if explicitly set elsewhere
+        if api_key:
+            # A user's own connection: use exactly what it specifies, never the
+            # server operator's endpoint or model.
+            key, url, chosen = api_key, base_url, model
+        else:
+            # The server-wide provider. This used to fall back to
+            # settings.anthropic_api_key, which sent the Anthropic secret to OpenAI.
+            key = settings.openai_api_key
+            url = base_url or settings.openai_base_url or None
+            chosen = model or settings.openai_model
         if not key:
-            raise RuntimeError("OpenAI API key is not set")
-        self._client = AsyncOpenAI(api_key=key, base_url=base_url)
-        self._model = model or "gpt-4o"
+            raise RuntimeError("OpenAI API key is not set (OSPREY_OPENAI_API_KEY)")
+
+        from openai import AsyncOpenAI  # imported lazily, after the key check
+
+        self._client = AsyncOpenAI(api_key=key, base_url=url)
+        self._model = chosen or "gpt-4o"
 
     async def _call(self, system: str, user: str, fn: dict) -> dict:
         resp = await self._client.chat.completions.create(
