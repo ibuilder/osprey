@@ -73,8 +73,14 @@ def parse_pins(path: Path) -> dict[str, str]:
     return pins
 
 
-def resolve(spec: str) -> dict[str, str]:
-    """Resolve ``spec`` without installing anything, via pip's --report."""
+def resolve(spec: str, constraints: list[Path]) -> dict[str, str]:
+    """Resolve ``spec`` without installing anything, via pip's --report.
+
+    ``constraints`` matters more than it looks. Resolving unconstrained picks
+    whatever is newest on PyPI that day, so a ``--check`` built that way fails
+    every time any production dependency publishes a release -- which is how
+    this check first went red in CI, on nothing but upstream patch bumps.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "report.json"
         result = subprocess.run(
@@ -87,6 +93,7 @@ def resolve(spec: str) -> dict[str, str]:
                 "--quiet",
                 "--report",
                 str(report),
+                *[arg for c in constraints for arg in ("-c", str(c))],
                 spec,
             ],
             cwd=BACKEND,
@@ -126,7 +133,14 @@ def main() -> int:
     args = parser.parse_args()
 
     dev = {name.lower() for name in parse_pins(DEV_CONSTRAINTS)}
-    resolved = resolve(f".[{EXTRAS}]")
+    # --check holds the committed prod pins fixed, so it fails only when the set
+    # of packages changes or the two files stop resolving together -- not when
+    # something upstream ships a release. Regenerating is the deliberate upgrade,
+    # so it resolves against the dev pins alone and takes whatever is current.
+    constraints = [DEV_CONSTRAINTS]
+    if args.check and PROD_CONSTRAINTS.exists():
+        constraints.append(PROD_CONSTRAINTS)
+    resolved = resolve(f".[{EXTRAS}]", constraints)
     # Only what constraints.txt does not already pin, so the two files can never
     # disagree about a shared package and Dependabot's edits to the dev file stay
     # authoritative.
@@ -137,8 +151,20 @@ def main() -> int:
 
     if args.check:
         if rendered != current:
+            import difflib
+
+            # Say what changed. "Out of date" alone sent the last reader off to
+            # regenerate locally just to find out.
+            diff = difflib.unified_diff(
+                current.splitlines(),
+                rendered.splitlines(),
+                "constraints-prod.txt (committed)",
+                "constraints-prod.txt (resolved)",
+                lineterm="",
+            )
+            print("\n".join(diff), file=sys.stderr)
             print(
-                "constraints-prod.txt is out of date.\n"
+                "\nconstraints-prod.txt is out of date.\n"
                 "Run: python backend/tools/regen_constraints.py",
                 file=sys.stderr,
             )

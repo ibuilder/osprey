@@ -344,6 +344,7 @@ jobs:
             --set image.pullPolicy=Never \
             --set config.env=prod --set config.rlsEnabled=true \
             --set replicaCount.api=1 --set replicaCount.worker=1 \
+            --set podDisruptionBudget.enabled=false \
             --set-string secrets.secretKey=ci-secret-key-at-least-32-bytes-long-0 \
             --set-string secrets.encryptionKey=ci-encryption-key \
             --set-string secrets.webhookHmacSecret=ci-hmac-secret \
