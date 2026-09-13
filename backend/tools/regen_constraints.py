@@ -122,6 +122,40 @@ def resolve(spec: str, constraints: list[Path]) -> dict[str, str]:
     return pins
 
 
+def compare(resolved: dict[str, str], committed: dict[str, str]) -> list[str]:
+    """Problems with ``committed`` as pins for ``resolved``. Empty means fine.
+
+    A subset check, not equality. The file pins the Linux Docker image but is
+    often regenerated on Windows, and each platform resolves packages the other
+    never sees -- uvicorn[standard] pulls in uvloop only off Windows. Demanding
+    an exact match with one platform's resolve made the check fail on the other
+    no matter what. What matters is that everything this platform needs is
+    pinned at a consistent version; a pin for a package that is not installed
+    here does nothing, because a constraint only applies to what gets installed.
+    """
+    pinned = {name.lower(): version for name, version in committed.items()}
+    problems: list[str] = []
+    for name, version in sorted(resolved.items(), key=lambda kv: kv[0].lower()):
+        have = pinned.get(name.lower())
+        if have is None:
+            problems.append(f"  missing: {name}=={version}")
+        elif have != version:
+            problems.append(f"  version: {name} pinned {have}, resolves {version}")
+    return problems
+
+
+def merge(resolved: dict[str, str], committed: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    """Resolved pins, plus committed pins this platform did not resolve.
+
+    Carrying the unresolved ones over is what keeps a Windows regeneration from
+    silently dropping Linux-only pins like uvloop. Returned separately so a human
+    can prune one that is genuinely gone.
+    """
+    seen = {name.lower() for name in resolved}
+    carried = {n: v for n, v in committed.items() if n.lower() not in seen}
+    return {**resolved, **carried}, sorted(carried, key=str.lower)
+
+
 def render(pins: dict[str, str]) -> str:
     body = "\n".join(
         f"{name}=={version}" for name, version in sorted(pins.items(), key=lambda kv: kv[0].lower())
@@ -152,37 +186,39 @@ def main() -> int:
     # authoritative.
     prod = {name: version for name, version in resolved.items() if name.lower() not in dev}
 
-    rendered = render(prod)
-    current = PROD_CONSTRAINTS.read_text(encoding="utf-8") if PROD_CONSTRAINTS.exists() else ""
+    committed = parse_pins(PROD_CONSTRAINTS)
 
     if args.check:
-        if rendered != current:
-            import difflib
-
-            # Say what changed. "Out of date" alone sent the last reader off to
-            # regenerate locally just to find out.
-            diff = difflib.unified_diff(
-                current.splitlines(),
-                rendered.splitlines(),
-                "constraints-prod.txt (committed)",
-                "constraints-prod.txt (resolved)",
-                lineterm="",
-            )
-            print("\n".join(diff), file=sys.stderr)
+        problems = compare(prod, committed)
+        if problems:
+            print("\n".join(problems), file=sys.stderr)
             print(
                 "\nconstraints-prod.txt is out of date.\n"
                 "Run: python backend/tools/regen_constraints.py",
                 file=sys.stderr,
             )
             return 1
-        print(f"constraints-prod.txt is current ({len(prod)} pins).")
+        elsewhere = sorted({n.lower() for n in committed} - {n.lower() for n in prod})
+        note = f"; {len(elsewhere)} pinned for other platforms ({', '.join(elsewhere)})"
+        print(
+            f"constraints-prod.txt is current ({len(prod)} resolved here"
+            f"{note if elsewhere else ''})."
+        )
         return 0
 
+    merged, carried = merge(prod, committed)
+    if carried:
+        print(
+            "Kept pins this platform did not resolve (other platforms need them, or "
+            "they are stale -- remove by hand if gone): " + ", ".join(carried)
+        )
+    rendered = render(merged)
+    current = PROD_CONSTRAINTS.read_text(encoding="utf-8") if PROD_CONSTRAINTS.exists() else ""
     if rendered == current:
-        print(f"constraints-prod.txt already current ({len(prod)} pins).")
+        print(f"constraints-prod.txt already current ({len(merged)} pins).")
         return 0
     PROD_CONSTRAINTS.write_text(rendered, encoding="utf-8")
-    print(f"Wrote {PROD_CONSTRAINTS.name}: {len(prod)} pins.")
+    print(f"Wrote {PROD_CONSTRAINTS.name}: {len(merged)} pins.")
     return 0
 
 
