@@ -90,6 +90,12 @@ def resolve(spec: str, constraints: list[Path]) -> dict[str, str]:
                 "pip",
                 "install",
                 "--dry-run",
+                # Without this the report omits every package already installed in
+                # the running environment, so the output depended on the venv: the
+                # first generated file silently lacked alembic, requests and three
+                # others because the author's venv had them, and CI -- which installs
+                # .[dev,prod] first -- dropped asyncpg, arq and redis instead.
+                "--ignore-installed",
                 "--quiet",
                 "--report",
                 str(report),
