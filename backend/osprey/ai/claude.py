@@ -98,10 +98,10 @@ class ClaudeProvider(LLMProvider):
     name = "claude"
 
     def __init__(self) -> None:
-        from anthropic import AsyncAnthropic  # imported lazily
-
         if not settings.anthropic_api_key:
             raise RuntimeError("OSPREY_ANTHROPIC_API_KEY is not set")
+        from anthropic import AsyncAnthropic  # imported lazily, after the key check
+
         self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
         self._model = settings.anthropic_model
 

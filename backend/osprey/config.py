@@ -123,6 +123,12 @@ class Settings(BaseSettings):
     ai_provider: Literal["deterministic", "claude", "openai", "ollama"] = "deterministic"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5"
+    # Used only when OSPREY_AI_PROVIDER=openai. Deliberately separate: a provider
+    # must never fall back to another vendor's key, because that sends one
+    # company's secret to another company's API.
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o"
+    openai_base_url: str = ""
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.1"
 

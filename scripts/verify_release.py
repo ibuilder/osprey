@@ -125,27 +125,37 @@ def download(tag: str, repo: str, into: pathlib.Path) -> None:
         raise Failure(f"could not download release assets:\n{result.stderr.strip()}")
 
 
-def asset_names(tag: str, repo: str) -> list[str]:
+def release_assets(tag: str, repo: str) -> list[dict]:
+    """Every asset on the release, with its name, browser `url` and `apiUrl`."""
     result = subprocess.run(
-        [
-            "gh",
-            "release",
-            "view",
-            tag,
-            "--repo",
-            repo,
-            "--json",
-            "assets",
-            "--jq",
-            ".assets[].name",
-        ],
+        ["gh", "release", "view", tag, "--repo", repo, "--json", "assets"],
         capture_output=True,
         text=True,
         check=False,  # the non-zero case is reported, not raised
     )
     if result.returncode != 0:
         raise Failure(f"could not list release assets:\n{result.stderr.strip()}")
-    return [line for line in result.stdout.splitlines() if line]
+    return json.loads(result.stdout)["assets"]
+
+
+def asset_name_for_url(url: str, assets: list[dict]) -> str:
+    """The asset a `latest.json` URL points at, or "" if it matches none.
+
+    Two URL shapes occur. Up to v0.2.1 the manifest held browser download URLs,
+    whose last segment is the filename. tauri-action v1 writes API asset URLs
+    instead, `.../releases/assets/<numeric id>`, because a draft's browser URL
+    (`.../download/untagged-<hash>/<file>`) changes the moment it is published;
+    the updater fetches those with `Accept: application/octet-stream`. Taking the
+    last segment of that as a filename is how v0.3.0's integrity job failed with
+    "no published signature for '561766693'".
+    """
+    for asset in assets:
+        if url and url in (asset.get("apiUrl"), asset.get("url")):
+            return str(asset["name"])
+    tail = url.rsplit("/", 1)[-1]
+    if any(asset.get("name") == tail for asset in assets):
+        return tail
+    return ""
 
 
 def verify(tag: str, repo: str) -> list[str]:
@@ -154,7 +164,8 @@ def verify(tag: str, repo: str) -> list[str]:
     trusted, comment = trusted_key_id()
     report.append(f"app trusts key id {trusted.hex().upper()}  [{comment}]")
 
-    names = asset_names(tag, repo)
+    assets = release_assets(tag, repo)
+    names = [str(a["name"]) for a in assets]
     installers = [n for n in names if n.endswith(INSTALLER_SUFFIXES)]
     if not installers:
         raise Failure(f"{tag} published no installers")
@@ -165,7 +176,11 @@ def verify(tag: str, repo: str) -> list[str]:
         )
 
     # An installer with no signature beside it is one the updater cannot accept.
-    unsigned = [n for n in installers if f"{n}.sig" not in names]
+    # Except a .dmg: it is only ever a first-install download. macOS updates are
+    # delivered as .app.tar.gz, which is what Tauri signs, so no .dmg has a .sig.
+    # v0.3.0 was the first release with macOS artifacts at all (v0.2.1 shipped
+    # none), which is when this rule first met one.
+    unsigned = [n for n in installers if not n.endswith(".dmg") and f"{n}.sig" not in names]
     if unsigned:
         raise Failure("installers with no signature: " + ", ".join(unsigned))
     report.append(f"{len(installers)} installer(s), each with a signature")
@@ -215,9 +230,14 @@ def verify(tag: str, repo: str) -> list[str]:
             # .sig beside the installer. If an installer was re-signed after the
             # build (Authenticode does exactly that) and the manifest was not
             # updated, every installed copy rejects the update.
-            name = str(entry.get("url", "")).rsplit("/", 1)[-1]
+            url = str(entry.get("url", ""))
+            name = asset_name_for_url(url, assets)
             published = work / f"{name}.sig"
-            if not published.exists():
+            if not name:
+                # An updater pointed at a URL outside this release downloads
+                # something nobody verified here, or nothing at all.
+                stale.append(f"{platform}: its URL is not an asset of {tag} ({url})")
+            elif not published.exists():
                 stale.append(f"{platform}: no {name}.sig is published")
             elif (
                 published.read_text(encoding="utf-8").strip()
