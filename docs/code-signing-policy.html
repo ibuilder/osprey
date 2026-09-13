@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Code signing policy — Osprey</title>
+<meta name="description" content="How Osprey's Windows binaries are code-signed, who can approve a signature, and what the software does with your data." />
+<style>
+  :root{
+    --ink:#0E1A2B; --ember:#FF6A2B; --mist:#F6F7F9; --line:#E4E7EC; --muted:#667085;
+    --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--sans);color:var(--ink);background:#fff;line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:var(--ember);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:760px;margin:0 auto;padding:0 24px}
+  header{background:var(--ink);color:#fff;padding:28px 0 40px}
+  .nav{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+  .nav .mark{width:28px;height:28px}
+  .nav .name{font-weight:700;font-size:18px;color:#fff}
+  .nav .spacer{flex:1}
+  .nav a.back{color:#cdd5e0;font-size:14px}
+  h1{font-size:clamp(28px,5vw,40px);letter-spacing:-.8px;margin:0 0 8px}
+  header p{color:#c7d0dc;margin:0}
+  main{padding:40px 0 56px}
+  h2{font-size:21px;letter-spacing:-.3px;margin:36px 0 10px}
+  .attribution{background:var(--mist);border:1px solid var(--line);border-left:5px solid var(--ember);border-radius:10px;padding:16px 18px;font-weight:600}
+  table{width:100%;border-collapse:collapse;margin:8px 0}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:13px;color:var(--muted);font-weight:600}
+  code{font-family:var(--mono);font-size:.9em;background:var(--mist);padding:1px 5px;border-radius:4px}
+  ul{padding-left:20px}
+  footer{border-top:1px solid var(--line);padding:28px 0;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <g id="osprey-mark">
+    <polyline points="18,58 41,37 64,47 87,37 110,58" fill="none" stroke="currentColor" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M64 37 L57 50 L71 50 Z" fill="currentColor"/>
+    <path d="M64 48 L56.5 62 L64 96 L71.5 62 Z" fill="#FF6A2B"/>
+  </g>
+</defs></svg>
+
+<header>
+  <div class="wrap">
+    <nav class="nav">
+      <svg class="mark" viewBox="0 0 128 128" style="color:#fff"><use href="#osprey-mark"/></svg>
+      <a class="name" href="./">Osprey</a>
+      <span class="spacer"></span>
+      <a class="back" href="./">&larr; Home</a>
+    </nav>
+    <h1>Code signing policy</h1>
+    <p>How Osprey's Windows binaries are signed, who can approve a signature, and what the software does with your data.</p>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <p class="attribution">Free code signing provided by <a href="https://signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>.</p>
+
+    <h2>What is signed</h2>
+    <p>Windows release artifacts built from this repository's public source by its
+      release workflow on GitHub Actions
+      (<a href="https://github.com/ibuilder/osprey/blob/main/.github/workflows/release.yml"><code>release.yml</code></a>):</p>
+    <ul>
+      <li>the installers: <code>Osprey_&lt;version&gt;_x64-setup.exe</code> and <code>Osprey_&lt;version&gt;_x64_en-US.msi</code></li>
+      <li>the bundled backend executable, <code>osprey-backend.exe</code>, which ships inside those installers</li>
+    </ul>
+    <p>Nothing built on a developer's machine is signed. Third-party libraries bundled
+      alongside the backend (for example the Python runtime) are not re-signed by this
+      project. macOS and Linux builds are not covered by this certificate.</p>
+    <p>Because the certificate is issued to SignPath Foundation, Windows shows
+      <b>SignPath Foundation</b> as the publisher of a signed Osprey installer.</p>
+
+    <h2>Team roles</h2>
+    <table>
+      <thead><tr><th>Role</th><th>Responsibility</th><th>Members</th></tr></thead>
+      <tbody>
+        <tr><td>Committers and reviewers</td><td>Write and review changes to the source</td><td><a href="https://github.com/ibuilder">ibuilder</a></td></tr>
+        <tr><td>Approvers</td><td>Approve each signing request before a release is signed</td><td><a href="https://github.com/ibuilder">ibuilder</a></td></tr>
+      </tbody>
+    </table>
+    <p>Every release requires manual approval before anything is signed. All members use
+      multi-factor authentication on GitHub and SignPath.</p>
+
+    <h2>Privacy policy</h2>
+    <p>This program will not transfer any information to other networked systems unless
+      specifically requested by the user or the person installing or operating it.</p>
+    <p>In practice that means Osprey contacts only what its operator configures:</p>
+    <ul>
+      <li>the data sources a user explicitly connects (for example Microsoft 365, Google, or Procore), using the account the user authorizes;</li>
+      <li>an AI provider, only if one is configured &mdash; the default provider runs entirely offline;</li>
+      <li>an OpenTelemetry collector, only if the operator enables it and supplies the address.</li>
+    </ul>
+    <p>Osprey sends no usage data, analytics, or crash reports to its maintainers.</p>
+
+    <h2>Verifying a download</h2>
+    <p>On Windows, open the installer's <b>Properties &rarr; Digital Signatures</b> tab. Every
+      release also publishes <code>SHA256SUMS.txt</code> and signed build provenance, which
+      can be checked with <code>gh attestation verify &lt;file&gt; --repo ibuilder/osprey</code>.</p>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a href="./">Osprey</a> &middot; <a href="https://github.com/ibuilder/osprey">Source on GitHub</a> &middot; AGPL-3.0
+  </div>
+</footer>
+
+</body>
+</html>

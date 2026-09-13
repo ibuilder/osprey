@@ -206,10 +206,31 @@ def verify(tag: str, repo: str) -> list[str]:
         if not platforms:
             raise Failure("latest.json lists no platforms")
         bad_platforms: list[str] = []
+        stale: list[str] = []
         for platform, entry in platforms.items():
             kid = key_id(signature_line(decode_sig_asset(entry["signature"])))
             if kid != trusted:
                 bad_platforms.append(f"{platform} signed by {kid.hex().upper()}")
+            # The updater checks a download against the manifest's copy, not the
+            # .sig beside the installer. If an installer was re-signed after the
+            # build (Authenticode does exactly that) and the manifest was not
+            # updated, every installed copy rejects the update.
+            name = str(entry.get("url", "")).rsplit("/", 1)[-1]
+            published = work / f"{name}.sig"
+            if not published.exists():
+                stale.append(f"{platform}: no {name}.sig is published")
+            elif (
+                published.read_text(encoding="utf-8").strip()
+                != entry["signature"].strip()
+            ):
+                stale.append(f"{platform}: latest.json differs from {name}.sig")
+        if stale:
+            raise Failure(
+                "latest.json does not carry the published signatures, so installed "
+                "copies will reject this update:\n  "
+                + "\n  ".join(stale)
+                + "\nRun: python scripts/sync_manifest_signatures.py <tag>"
+            )
         if bad_platforms:
             raise Failure(
                 "latest.json carries signatures from an untrusted key:\n  "

@@ -66,6 +66,34 @@ jobs:
 
       - run: npm ci
 
+      # Windows Authenticode via SignPath Foundation (see docs/code-signing.md).
+      #
+      # Off until the repository has SIGNPATH_API_TOKEN and SIGNPATH_ORGANIZATION_ID,
+      # so this workflow keeps producing releases exactly as before in the meantime.
+      # Only tag releases are submitted: every signing request waits for a human to
+      # approve it in SignPath, and a dry run must not page the approver.
+      - name: Decide whether SignPath signing applies
+        id: signpath
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          ORG: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+          UNSIGNED: ${{ inputs.unsigned == true }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN:-}" ] || [ -z "${ORG:-}" ]; then
+            echo "::notice::SignPath is not configured; Windows binaries ship without Authenticode."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          elif [ "$IS_TAG" != "true" ] || [ "$UNSIGNED" = "true" ]; then
+            echo "::notice::SignPath skipped: only tag releases are submitted for signing."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "SignPath signing enabled for this release."
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # Freeze the backend and bundle it as a Tauri resource, so the installer needs
       # no Python and no Docker on the user's machine. This is a PyInstaller directory
       # build, not a single self-extracting binary — see packaging/osprey-backend.spec
@@ -105,6 +133,47 @@ jobs:
           du -sh "$DEST"
         env:
           MATRIX_ARGS: ${{ matrix.args }}
+
+      # Sign the backend before Tauri bundles it. Signing only the installer would
+      # leave osprey-backend.exe unsigned inside it, and that executable is what
+      # antivirus inspects when the app spawns it. Only the executable is uploaded:
+      # the rest of the PyInstaller directory is third-party runtime, which SignPath
+      # Foundation does not sign on this project's behalf.
+      - name: Stage the backend executable for signing
+        id: backend-artifact
+        if: steps.signpath.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-backend-exe
+          path: clients/desktop/src-tauri/binaries/osprey-backend/osprey-backend.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign the backend executable (SignPath)
+        if: steps.signpath.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'osprey' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: backend
+          github-artifact-id: ${{ steps.backend-artifact.outputs.artifact-id }}
+          wait-for-completion: true
+          # Approval is manual, so allow for a human to get to it.
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: clients/desktop/src-tauri/binaries/osprey-backend
+
+      - name: The backend executable carries a valid signature
+        if: steps.signpath.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $sig = Get-AuthenticodeSignature src-tauri/binaries/osprey-backend/osprey-backend.exe
+          if ($sig.Status -ne 'Valid') {
+            Write-Error "osprey-backend.exe signature is $($sig.Status): $($sig.StatusMessage)"
+            exit 1
+          }
+          Write-Output "Signed by: $($sig.SignerCertificate.Subject)"
 
       # Decide whether Apple signing can actually work, BEFORE committing the build
       # to it. A malformed or wrong-password APPLE_CERTIFICATE makes tauri-action
@@ -228,8 +297,10 @@ jobs:
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Osprey {0}', github.ref_name) || '' }}
           releaseDraft: true
           releaseBody: |
-            **These binaries are not code-signed with an organisation certificate**,
-            so Windows SmartScreen and macOS Gatekeeper will warn on first run. See
+            **Code signing.** If SignPath signing is configured for this release, the
+            Windows installers are Authenticode-signed and their Properties -> Digital
+            Signatures tab shows SignPath Foundation. Otherwise, and on macOS without
+            an Apple certificate, SmartScreen and Gatekeeper will warn on first run. See
             [docs/code-signing.md](https://github.com/ibuilder/osprey/blob/main/docs/code-signing.md)
             for where that stands.
 
@@ -244,6 +315,78 @@ jobs:
 
                 gh attestation verify <file> --repo ibuilder/osprey
           args: ${{ matrix.args }}
+
+      # Authenticode for the installers, after tauri-action has built and uploaded
+      # them to the draft release.
+      #
+      # Order is everything here. Signing rewrites the installer bytes, and the
+      # updater signature tauri-action already computed covers the unsigned bytes.
+      # So: sign, then recompute each updater .sig over the signed file, then
+      # replace both on the draft. latest.json still holds the old signatures at
+      # that point; release-integrity brings it in line once every matrix leg has
+      # finished, so no other leg can overwrite the fix.
+      - name: Stage the installers for signing
+        id: installer-artifact
+        if: steps.signpath.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-windows-installers
+          path: |
+            clients/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            clients/desktop/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign the installers (SignPath)
+        if: steps.signpath.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'osprey' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: installers
+          github-artifact-id: ${{ steps.installer-artifact.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: clients/desktop/src-tauri/target/release/bundle
+
+      - name: Re-sign updater payloads over the signed installers, and publish them
+        if: steps.signpath.outputs.enabled == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(
+            Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe
+            Get-ChildItem src-tauri/target/release/bundle/msi/*.msi
+          )
+          if ($installers.Count -ne 2) {
+            Write-Error "expected one NSIS and one MSI installer, found $($installers.Count)"
+            exit 1
+          }
+          foreach ($file in $installers) {
+            $sig = Get-AuthenticodeSignature $file.FullName
+            if ($sig.Status -ne 'Valid') {
+              Write-Error "$($file.Name) signature is $($sig.Status): $($sig.StatusMessage)"
+              exit 1
+            }
+            Write-Output "$($file.Name) signed by: $($sig.SignerCertificate.Subject)"
+            # Replace the stale .sig tauri-action wrote over the unsigned bytes.
+            Remove-Item -ErrorAction SilentlyContinue "$($file.FullName).sig"
+            npm run tauri signer sign -- "$($file.FullName)"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if (-not (Test-Path "$($file.FullName).sig")) {
+              Write-Error "no updater signature written for $($file.Name)"
+              exit 1
+            }
+            gh release upload $env:TAG $file.FullName "$($file.FullName).sig" --clobber
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       # A second, deliberately separate path. Two steps rather than one with
       # conditional inputs, because the failure this guards against is shipping an
@@ -301,6 +444,12 @@ jobs:
       # It also catches tag/version skew, which has already happened here: v0.2.0
       # shipped Osprey_0.1.0_* binaries because tauri.conf.json was not bumped
       # before tagging, and nothing noticed for months.
+      # Runs first: the Windows leg re-signs installers after tauri-action wrote
+      # latest.json, so the manifest must take the published signatures before
+      # anything below checks, hashes or attests it.
+      - name: Bring latest.json in line with the published signatures
+        run: python scripts/sync_manifest_signatures.py "$TAG" --repo "$GITHUB_REPOSITORY"
+
       - name: Verify the release against the trusted key
         run: python scripts/verify_release.py "$TAG" --repo "$GITHUB_REPOSITORY"
 
