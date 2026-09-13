@@ -44,7 +44,7 @@ spec:
       volumes: {{- include "osprey.tmpVolume" . | nindent 8 }}
       containers:
         - name: worker
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default (printf "v%s" .Chart.AppVersion) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["arq", "osprey.workers.main.WorkerSettings"]
           securityContext: {{- include "osprey.containerSecurityContext" . | nindent 12 }}

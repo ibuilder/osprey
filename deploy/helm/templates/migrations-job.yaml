@@ -21,7 +21,7 @@ spec:
       volumes: {{- include "osprey.tmpVolume" . | nindent 8 }}
       containers:
         - name: migrate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default (printf "v%s" .Chart.AppVersion) }}"
           command: ["alembic", "upgrade", "head"]
           # The migration job holds the most privileged database credential in the
           # deployment, so it gets the same container hardening as everything else.

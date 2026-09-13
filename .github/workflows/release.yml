@@ -48,6 +48,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Before twenty minutes of building: on a tag, every version string must
+      # already be the tag's. v0.2.0 was cut without bumping tauri.conf.json and
+      # shipped Osprey_0.1.0_* installers; verify_release.py would catch that, but
+      # only after the build. A dry run checks agreement without a tag to match.
+      - name: Version strings match the tag
+        shell: bash
+        working-directory: .
+        env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          PY="$(command -v python3 || command -v python)"
+          if [ "$IS_TAG" = "true" ]; then
+            "$PY" scripts/check_versions.py --tag "$TAG"
+          else
+            "$PY" scripts/check_versions.py
+          fi
+
       - name: Linux build deps
         if: matrix.os == 'ubuntu-22.04'
         run: |
