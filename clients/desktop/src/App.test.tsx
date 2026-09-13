@@ -255,6 +255,50 @@ describe("Login", () => {
   });
 });
 
+describe("Login — invite codes", () => {
+  it("redeems an invite without asking for the email the invite already names", async () => {
+    const user = userEvent.setup();
+    const { Api } = await import("./api");
+    const session = {
+      baseUrl: "http://localhost:8000",
+      token: "a",
+      refreshToken: "r",
+      role: "pm",
+      orgId: "o1",
+      userId: "u1",
+    };
+    const accept = vi.spyOn(Api, "acceptInvite").mockResolvedValueOnce(session);
+    const onLogin = vi.fn();
+
+    render(<Login onLogin={onLogin} />);
+    await screen.findByRole("button", { name: "Sign in" });
+    await user.click(screen.getByText("Have an invite code?"));
+
+    expect(screen.queryByPlaceholderText("Email")).not.toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("Invite code"), "  code-from-admin  ");
+    await user.type(screen.getByPlaceholderText("Your name"), "Pat PM");
+    await user.type(screen.getByPlaceholderText("Choose a password"), "N3w-Passw0rd!long");
+    await user.click(screen.getByRole("button", { name: "Join" }));
+
+    await waitFor(() => expect(onLogin).toHaveBeenCalledWith(session));
+    expect(accept).toHaveBeenCalledWith(expect.any(String), "code-from-admin", "N3w-Passw0rd!long", "Pat PM");
+  });
+
+  it("shows why an invite was refused", async () => {
+    const user = userEvent.setup();
+    const { Api } = await import("./api");
+    vi.spyOn(Api, "acceptInvite").mockRejectedValueOnce(new Error("invite is invalid or has expired"));
+
+    render(<Login onLogin={vi.fn()} />);
+    await screen.findByRole("button", { name: "Sign in" });
+    await user.click(screen.getByText("Have an invite code?"));
+    await user.type(screen.getByPlaceholderText("Invite code"), "stale");
+    await user.click(screen.getByRole("button", { name: "Join" }));
+
+    expect(await screen.findByText(/invalid or has expired/)).toBeInTheDocument();
+  });
+});
+
 describe("Login — single sign-on", () => {
   it("offers no SSO button when the server has none", async () => {
     const { Api } = await import("./api");

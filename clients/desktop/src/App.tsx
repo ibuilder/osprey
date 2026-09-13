@@ -1,8 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Api, DEFAULT_BASE, Hotlist, Session } from "./api";
+import { AccountView, AdminView } from "./Admin";
+import { Api, canGrant, DEFAULT_BASE, Hotlist, Session } from "./api";
 
-type Tab = "hotlist" | "connections" | "ai" | "scripts";
+type Tab = "hotlist" | "connections" | "ai" | "scripts" | "admin" | "account";
+
+/** The tabs a role can use. Admin is hidden from roles the server would refuse. */
+export function tabsFor(role: string): Tab[] {
+  const tabs: Tab[] = ["hotlist", "connections", "ai", "scripts"];
+  if (canGrant(role, "admin")) tabs.push("admin");
+  tabs.push("account");
+  return tabs;
+}
+
+/** Tabs that are about the org or the user, not the selected project. */
+const PROJECT_FREE: Tab[] = ["admin", "account"];
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -17,7 +29,9 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "invite">("login");
+  const [inviteCode, setInviteCode] = useState("");
+  const [fullName, setFullName] = useState("");
   const [err, setErr] = useState("");
   const [sso, setSso] = useState<{ enabled: boolean; issuer: string } | null>(null);
   const [ssoBusy, setSsoBusy] = useState(false);
@@ -117,7 +131,9 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       const s =
         mode === "login"
           ? await Api.login(baseUrl, email, password)
-          : await Api.register(baseUrl, email, password, orgName || "My Org");
+          : mode === "invite"
+            ? await Api.acceptInvite(baseUrl, inviteCode.trim(), password, fullName.trim())
+            : await Api.register(baseUrl, email, password, orgName || "My Org");
       // Hand the backend session to the Rust shell so the OAuth loopback can call it.
       await invoke("set_session", { baseUrl: s.baseUrl, token: s.token }).catch(() => {});
       onLogin(s);
@@ -156,19 +172,38 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
             </div>
           </>
         )}
-        <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        {mode === "invite" ? (
+          <>
+            {/* The invite already names the email address, so none is asked for. */}
+            <input placeholder="Invite code" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} />
+            <input placeholder="Your name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          </>
+        ) : (
+          <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        )}
+        <input
+          type="password"
+          placeholder={mode === "invite" ? "Choose a password" : "Password"}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
         {mode === "register" && (
           <input placeholder="Organization name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
         )}
         {err && <div className="notice">{err}</div>}
         <button className="primary" style={{ width: "100%" }} onClick={submit} disabled={starting}>
-          {starting ? "Starting…" : mode === "login" ? "Sign in" : "Create account"}
+          {starting ? "Starting…" : mode === "login" ? "Sign in" : mode === "invite" ? "Join" : "Create account"}
         </button>
         <div className="muted" style={{ textAlign: "center" }}>
           <a onClick={() => setMode(mode === "login" ? "register" : "login")}>
             {mode === "login" ? "Create an account" : "Have an account? Sign in"}
           </a>
+          {mode !== "invite" && (
+            <>
+              {" · "}
+              <a onClick={() => setMode("invite")}>Have an invite code?</a>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -222,7 +257,7 @@ function Main({
         </select>
         <button onClick={newProject}>+ Project</button>
         <div className="tabs">
-          {(["hotlist", "connections", "ai", "scripts"] as Tab[]).map((t) => (
+          {tabsFor(session.role).map((t) => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>
           ))}
           <button
@@ -238,7 +273,11 @@ function Main({
         </div>
       </div>
       <div className="body">
-        {!projectId && <div className="muted">Create a project to begin.</div>}
+        {!projectId && !PROJECT_FREE.includes(tab) && <div className="muted">Create a project to begin.</div>}
+        {tab === "admin" && canGrant(session.role, "admin") && (
+          <AdminView api={api} role={session.role} userId={session.userId} />
+        )}
+        {tab === "account" && <AccountView api={api} onSignedOut={() => onSession(null)} />}
         {projectId && tab === "hotlist" && <HotlistView api={api} projectId={projectId} />}
         {projectId && tab === "connections" && <ConnectionsView api={api} projectId={projectId} />}
         {projectId && tab === "ai" && <AiView api={api} projectId={projectId} />}

@@ -88,3 +88,16 @@ a { color: var(--ember); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .notice { color: var(--prio-red); font-weight: 600; }
 textarea.code { font-family: var(--mono); min-height: 160px; }
+
+/* Admin and account screens */
+.card .row > button { white-space: nowrap; flex: none; }
+button.danger { background: var(--prio-red); border-color: var(--prio-red); color: var(--white); font-weight: 600; }
+.admin-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.admin-table td { padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: middle; font-size: 14px; }
+.admin-table td select { width: auto; }
+.admin-table td.actions { text-align: right; white-space: nowrap; }
+.admin-table td.actions > * { margin-left: 6px; }
+.admin-table tr.inactive td:first-child { color: var(--muted); text-decoration: line-through; }
+.secret { margin-top: 10px; padding: 12px; border: 1px solid var(--ember); border-radius: 10px; background: #fff7f2; }
+.secret-value { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; padding: 6px 8px; background: var(--white); border: 1px solid var(--line); border-radius: 6px; }
+label.muted input { margin-top: 4px; }

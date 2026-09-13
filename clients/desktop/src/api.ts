@@ -91,6 +91,82 @@ export interface ItemDetail {
   signals: { id: string; source_type: string; source_kind: string; title: string; url: string | null; occurred_at: string | null }[];
 }
 
+// ---- Org administration ---------------------------------------------------- //
+
+export type Role = "owner" | "admin" | "pm" | "viewer";
+
+/** Highest first, the order a role picker should list them. */
+export const ROLES: Role[] = ["owner", "admin", "pm", "viewer"];
+
+const ROLE_RANK: Record<string, number> = { viewer: 0, pm: 1, admin: 2, owner: 3 };
+
+/**
+ * Whether `actor` may grant (or take away) `target`. Mirrors the server's rule --
+ * nobody grants above their own role -- so the UI does not offer choices the
+ * server will refuse. The server still enforces it; this is only presentation.
+ */
+export function canGrant(actor: string, target: string): boolean {
+  return (ROLE_RANK[actor] ?? -1) >= (ROLE_RANK[target] ?? Infinity);
+}
+
+export interface Member {
+  user_id: string;
+  email: string;
+  full_name: string;
+  role: Role;
+  is_active: boolean;
+  /** Provisioned by the identity provider: role and status are changed there. */
+  scim_managed: boolean;
+  last_login_at: string | null;
+}
+
+export interface Invite {
+  id: string;
+  email: string;
+  role: Role;
+  invited_by: string;
+  expires_at: string;
+  accepted: boolean;
+  /** Present only in the creation response. */
+  token: string | null;
+}
+
+export interface ScimToken {
+  id: string;
+  name: string;
+  max_role: Role;
+  created_at: string;
+  last_used_at: string | null;
+  revoked: boolean;
+  /** Present only in the creation response. */
+  token: string | null;
+}
+
+export interface Retention {
+  /** null inherits the deployment default; 0 keeps forever. */
+  signal_days: number | null;
+  item_days: number | null;
+  effective_signal_days: number;
+  effective_item_days: number;
+}
+
+export interface PurgePreview {
+  signals: number;
+  items: number;
+  scores: number;
+  snapshots: number;
+  cutoff_signal: string | null;
+  cutoff_item: string | null;
+}
+
+export interface ActiveSession {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  user_agent: string;
+  ip: string;
+}
+
 function sessionFrom(baseUrl: string, d: any): Session {
   return {
     baseUrl,
@@ -205,6 +281,17 @@ export class Api {
     }
   }
 
+  /** Redeem an invite code: creates the account (or attaches an existing one) and signs in. */
+  static async acceptInvite(baseUrl: string, token: string, password: string, fullName: string): Promise<Session> {
+    const res = await fetch(`${baseUrl}/invites/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password, full_name: fullName }),
+    });
+    if (!res.ok) throw new Error(await describeError(res, "Could not accept the invite"));
+    return sessionFrom(baseUrl, await res.json());
+  }
+
   static async register(baseUrl: string, email: string, password: string, orgName: string): Promise<Session> {
     const res = await fetch(`${baseUrl}/auth/register`, {
       method: "POST",
@@ -246,6 +333,61 @@ export class Api {
       body: JSON.stringify({ name, source_code: source }),
     });
   runScript = (scriptId: string) => this.req<any>(`/scripts/${scriptId}/run`, { method: "POST" });
+
+  // Members and invites (admin+; listing members is open to every role).
+  members = () => this.req<Member[]>("/orgs/current/members");
+  setMemberRole = (userId: string, role: Role) =>
+    this.req<Member>(`/orgs/current/members/${encodeURIComponent(userId)}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    });
+  deactivateMember = (userId: string) =>
+    this.req(`/orgs/current/members/${encodeURIComponent(userId)}/deactivate`, { method: "POST" });
+  reactivateMember = (userId: string) =>
+    this.req(`/orgs/current/members/${encodeURIComponent(userId)}/reactivate`, { method: "POST" });
+  removeMember = (userId: string) =>
+    this.req(`/orgs/current/members/${encodeURIComponent(userId)}`, { method: "DELETE" });
+
+  invites = () => this.req<Invite[]>("/orgs/current/invites");
+  createInvite = (email: string, role: Role, expiresDays = 7) =>
+    this.req<Invite>("/orgs/current/invites", {
+      method: "POST",
+      body: JSON.stringify({ email, role, expires_days: expiresDays }),
+    });
+  revokeInvite = (inviteId: string) =>
+    this.req(`/orgs/current/invites/${encodeURIComponent(inviteId)}`, { method: "DELETE" });
+
+  // SCIM provisioning tokens (owner only).
+  scimTokens = () => this.req<ScimToken[]>("/orgs/current/scim-tokens");
+  createScimToken = (name: string, maxRole: Role) =>
+    this.req<ScimToken>("/orgs/current/scim-tokens", {
+      method: "POST",
+      body: JSON.stringify({ name, max_role: maxRole }),
+    });
+  revokeScimToken = (tokenId: string) =>
+    this.req(`/orgs/current/scim-tokens/${encodeURIComponent(tokenId)}`, { method: "DELETE" });
+
+  // Retention (view: admin; change and run: owner).
+  retention = () => this.req<Retention>("/orgs/current/retention");
+  setRetention = (signalDays: number | null, itemDays: number | null) =>
+    this.req<Retention>("/orgs/current/retention", {
+      method: "PUT",
+      body: JSON.stringify({ signal_days: signalDays, item_days: itemDays }),
+    });
+  retentionPreview = () => this.req<PurgePreview>("/orgs/current/retention/preview");
+  runRetention = () =>
+    this.req<Record<string, number>>("/orgs/current/retention/run", { method: "POST" });
+
+  // The caller's own sessions.
+  sessions = () => this.req<ActiveSession[]>("/auth/sessions");
+  revokeSession = (sessionId: string) =>
+    this.req(`/auth/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+  logoutAll = () => this.req("/auth/logout-all", { method: "POST" });
+  changePassword = (currentPassword: string, newPassword: string) =>
+    this.req("/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
 
   exportUrl = (projectId: string, fmt: "xlsx" | "pdf") =>
     `${this.session.baseUrl}/projects/${projectId}/hotlist/export?format=${fmt}`;
