@@ -376,7 +376,7 @@ jobs:
           # Register an owner, then ask the admin endpoint whether isolation is real.
           TOKEN=$(curl -fsS -X POST http://localhost:8000/auth/register \
             -H 'content-type: application/json' \
-            -d '{"email":"ci@example.com","password":"password123","org_name":"CI"}' \
+            -d '{"email":"ci@example.com","password":"Sm0ke-Test!Passw0rd","org_name":"CI"}' \
             | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
           ISO=$(curl -fsS http://localhost:8000/admin/security/tenant-isolation \
             -H "authorization: Bearer $TOKEN")
