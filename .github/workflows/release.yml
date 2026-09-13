@@ -5,6 +5,13 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      unsigned:
+        description: >
+          Build without updater artifacts, for when the updater signing key is
+          not available. The result CANNOT update itself — never tag from it.
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -171,7 +178,33 @@ jobs:
           security delete-keychain "$kc" >/dev/null 2>&1 || true
           rm -rf "$tmp"
 
+      # tauri.conf.json ships a committed updater public key and sets
+      # `createUpdaterArtifacts`, so the bundler goes looking for the private half
+      # on every build. Without this check a missing secret surfaces as an opaque
+      # failure deep inside the bundler, twenty minutes in, on every matrix leg at
+      # once. Worse is the case where it does not fail: an installed app verifies
+      # updates against the compiled-in public key, so a release whose payload was
+      # signed with anything else is an app that can never update again — and the
+      # only symptom is silence.
+      - name: The updater signing key is present
+        if: inputs.unsigned != true
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEY:-}" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set on this repository."
+            echo "The app ships an updater public key, so every release must be signed"
+            echo "with its private half or installed copies can never update."
+            echo "Add it under Settings > Secrets and variables > Actions,"
+            echo "or re-run this workflow with the 'unsigned' input to build a preview."
+            exit 1
+          fi
+          echo "Updater signing key present."
+
       - name: Build + sign + release
+        if: inputs.unsigned != true
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -194,7 +227,115 @@ jobs:
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Osprey {0}', github.ref_name) || '' }}
           releaseDraft: true
+          releaseBody: |
+            **These binaries are not code-signed with an organisation certificate**,
+            so Windows SmartScreen and macOS Gatekeeper will warn on first run. See
+            [docs/code-signing.md](https://github.com/ibuilder/osprey/blob/main/docs/code-signing.md)
+            for where that stands.
+
+            Until then the hash is the check that matters: verify your download
+            against `SHA256SUMS.txt`, attached to this release.
+
+            Update payloads *are* signed — an installed copy verifies every update
+            against the public key compiled into it and discards anything else.
+
+            Every file here also carries signed build provenance. Confirm one was
+            built by this workflow from this commit:
+
+                gh attestation verify <file> --repo ibuilder/osprey
           args: ${{ matrix.args }}
+
+      # A second, deliberately separate path. Two steps rather than one with
+      # conditional inputs, because the failure this guards against is shipping an
+      # unsigned build believing it was signed — and a single step whose behaviour
+      # flips on an expression is exactly how that happens. This one publishes
+      # nothing and is labelled in the log.
+      - name: Build unsigned preview (no updater payload)
+        if: inputs.unsigned == true
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: clients/desktop
+          tagName: ""
+          releaseName: ""
+          args: ${{ matrix.args }}
+
+  # ---- Checksums, SBOM and signed provenance ------------------------------- #
+  # The release notes tell people to verify their download, and until this job
+  # existed they pointed at a SHA256SUMS.txt that was never published. For an
+  # unsigned build the hash is the only integrity check a downloader has.
+  #
+  # Provenance goes further: a signed statement, recorded in a public transparency
+  # log, that these bytes came from this workflow at this commit. It does not
+  # replace code signing — the OS does not consult it — but anyone can check it
+  # with `gh attestation verify`, and it needs no secret at all: it is signed with
+  # the workflow's own OIDC identity.
+  release-integrity:
+    name: Publish checksums and provenance
+    needs: desktop
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # upload the assets
+      id-token: write     # mint the attestation signing identity
+      attestations: write # record it
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Runs before anything is hashed or attested, so a release that is wrong
+      # never gets a checksum file and an attestation vouching for it. The draft
+      # stays unpublished, which is the whole point of publishing drafts.
+      #
+      # This is the check the releases page cannot give you: that each .sig was
+      # made by the key this application actually trusts, not merely by a valid
+      # one. A release signed with the wrong key produces installers that look
+      # perfect and an installed base that can never update again.
+      #
+      # It also catches tag/version skew, which has already happened here: v0.2.0
+      # shipped Osprey_0.1.0_* binaries because tauri.conf.json was not bumped
+      # before tagging, and nothing noticed for months.
+      - name: Verify the release against the trusted key
+        run: python scripts/verify_release.py "$TAG" --repo "$GITHUB_REPOSITORY"
+
+      - name: Collect the release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          gh release download "$TAG" --dir assets --pattern '*'
+          # Removed before hashing, never after: a re-run that hashed the previous
+          # run's copies would publish a SHA256SUMS listing its own predecessor.
+          for stale in SHA256SUMS.txt; do
+            rm -f "assets/$stale"
+          done
+          ls -la assets
+
+      - name: Hash everything
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd assets && sha256sum -- *) > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          listed=$(wc -l < SHA256SUMS.txt)
+          present=$(find assets -maxdepth 1 -type f | wc -l)
+          # A silent mismatch here is how a file ships unverifiable.
+          [ "$listed" -eq "$present" ] || {
+            echo "::error::hashed $listed files but $present are present"; exit 1; }
+
+      - name: Upload checksums
+        run: gh release upload "$TAG" SHA256SUMS.txt --clobber
+
+      - name: Attest the installers
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-checksums: SHA256SUMS.txt
 
   # ---- Backend Docker image ------------------------------------------------ #
   backend-image:

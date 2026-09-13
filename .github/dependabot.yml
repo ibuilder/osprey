@@ -1,8 +1,24 @@
 version: 2
 updates:
-  # Backend Python deps. Grouped so routine bumps arrive as one reviewable PR;
-  # majors stay separate because they need a deliberate test run (see the caps in
-  # pyproject.toml) and constraints.txt must be regenerated alongside them.
+  # Backend Python deps.
+  #
+  # Dependabot edits `backend/constraints.txt` (it discovers the file and treats
+  # it as a manifest); it does not touch pyproject.toml, whose floors and caps are
+  # set deliberately. There is a SECOND pin file it cannot reason about:
+  # `constraints-prod.txt` pins the runtime extras — asyncpg, arq, alembic, the AI
+  # SDKs, push, OTel — that the test suite never installs but the Docker image
+  # does. The two are applied together and Dependabot resolves each in isolation,
+  # so a bump can be individually valid and jointly unresolvable.
+  #
+  # That is deliberately caught rather than prevented: CI's "Production
+  # constraints cover every extra the image installs" step dry-run resolves both
+  # files together, so such a PR goes red instead of shipping an image whose
+  # dependencies were never resolved as a set. Fix one with:
+  #
+  #     python backend/tools/regen_constraints.py
+  #
+  # Grouped so routine bumps arrive as one reviewable PR; majors stay separate
+  # because they need a deliberate test run (see the caps in pyproject.toml).
   - package-ecosystem: pip
     directory: /backend
     schedule:
@@ -50,11 +66,45 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    groups:
+      # The tauri crates are released as a set and their versions are coupled;
+      # bumping one alone is how you get a build that no longer compiles against
+      # the generated context. Everything else batches by minor/patch.
+      tauri:
+        patterns: ["tauri", "tauri-*"]
+      rust-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
     labels: ["dependencies", "desktop"]
+
+  # Container base image.
+  #
+  # Previously unwatched, which left a gap the pipeline could see but not close:
+  # Trivy reports base-image CVEs and its own comment in ci.yml says to treat them
+  # as "a signal to bump the base image" — while nothing ever proposed that bump.
+  # `python:3.12-slim` appears twice (builder + runtime) and Dependabot moves both.
+  #
+  # docker-compose.yml is deliberately NOT watched: its postgres/redis pins are
+  # local-dev infrastructure, and production points at managed services through
+  # the Helm values instead. The Helm `image.tag` is Osprey's own release tag,
+  # which the release workflow owns.
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    labels: ["dependencies", "docker", "security"]
 
   # Pin drift in the workflows themselves.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Action majors are usually just a runner/node bump and are verified the
+      # same way regardless, so they group too. Six separate single-action PRs
+      # (#1, #4, #21, #22, #24, #25) is review noise, not review.
+      actions:
+        patterns: ["*"]
     labels: ["dependencies", "ci"]

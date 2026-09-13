@@ -41,3 +41,6 @@ backend/dist-sidecar/
 backend/build-sidecar/
 backend/*.spec.bak
 clients/desktop/src-tauri/binaries/
+# Tauri regenerates gen/schemas on every cargo build; committing it just makes
+# every local build show up as a diff.
+clients/desktop/src-tauri/gen/
