@@ -41,13 +41,13 @@ async def test_health(client):
 async def test_auth_register_login(client):
     r = await client.post(
         "/auth/register",
-        json={"email": "a@b.com", "password": "password123", "org_name": "Acme"},
+        json={"email": "a@b.com", "password": "Sup3rSecret!pass", "org_name": "Acme"},
     )
     assert r.status_code == 201
     assert r.json()["role"] == "owner"
-    r2 = await client.post("/auth/login", json={"email": "a@b.com", "password": "password123"})
+    r2 = await client.post("/auth/login", json={"email": "a@b.com", "password": "Sup3rSecret!pass"})
     assert r2.status_code == 200
-    r3 = await client.post("/auth/login", json={"email": "a@b.com", "password": "wrong"})
+    r3 = await client.post("/auth/login", json={"email": "a@b.com", "password": "Wr0ng!password"})
     assert r3.status_code == 401
 
 
@@ -86,7 +86,7 @@ async def test_end_to_end_hotlist_and_exports(auth_client):
     assert act.status_code == 201
 
 
-async def test_rbac_viewer_cannot_act(auth_client, client):
+async def test_rbac_viewer_cannot_act(auth_client, client, member_token):
     owner_client, owner = auth_client
     project_id, conn_id = await _make_project_with_connection(owner_client)
     await owner_client.post(
@@ -95,12 +95,11 @@ async def test_rbac_viewer_cannot_act(auth_client, client):
     await owner_client.get(f"/projects/{project_id}/hotlist", params={"refresh": "true"})
     item_id = (await owner_client.get(f"/projects/{project_id}/items")).json()[0]["id"]
 
-    # A viewer token (forge a low-privilege principal in the same org).
+    # A real viewer in the same org. (A forged principal for a user that does
+    # not exist is now rejected as 401 before RBAC is ever consulted.)
     from osprey.models import Role
-    from osprey.security.auth import Principal, create_access_token
 
-    viewer = Principal(user_id="v1", org_id=owner["org_id"], role=Role.viewer, email="v@x.com")
-    vtoken = create_access_token(viewer)
+    vtoken = await member_token(owner["org_id"], Role.viewer, email="viewer-act@x.com")
 
     r = await client.post(
         f"/items/{item_id}/actions",

@@ -36,9 +36,13 @@ async def poll_connection(session: AsyncSession, connection_id: str) -> dict:
         session.add(row)
     except Exception as exc:  # noqa: BLE001 - one source down != system down
         row.status = ConnectionStatus.degraded
-        row.last_error = str(exc)[:500]
+        detail = str(exc)[:500]
+        row.last_error = detail
         session.add(row)
-        log.warning("poll failed for connection %s: %s", connection_id, exc)
+        # Log the truncated form, not the raw exception: a provider that answers
+        # an outage with a megabyte of HTML would otherwise put all of it in the
+        # log on every poll cycle, for every affected connection.
+        log.warning("poll failed for connection %s: %s", connection_id, detail)
     return {"connection_id": connection_id, "created": len(created)}
 
 
@@ -108,3 +112,16 @@ async def renew_subscriptions(session: AsyncSession, *, notify_base: str = "") -
         except Exception as exc:  # noqa: BLE001 - one source failing != system down
             log.warning("subscription renewal failed for %s: %s", row.id, exc)
     return {"checked": len(rows), "renewed": renewed}
+
+
+async def purge_retention(session: AsyncSession) -> dict:
+    """Apply every tenant's retention policy. Scheduled nightly.
+
+    Runs even when no window is configured -- it still reaps revoked and expired
+    refresh tokens, which accumulate on every sign-in whether or not the operator
+    ever sets a retention period.
+    """
+    from ..engine.retention import purge_expired
+
+    removed = await purge_expired(session)
+    return {"purged": {k: v for k, v in removed.items() if v}}

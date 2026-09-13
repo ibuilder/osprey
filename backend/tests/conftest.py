@@ -34,14 +34,38 @@ os.environ.update(
     # directly in test_connector_http.py with an injected clock.
     OSPREY_CONNECTOR_RATE_PER_SEC="10000",
     OSPREY_CONNECTOR_RATE_BURST="10000",
+    # PBKDF2 at the production 390k rounds costs ~0.2s per hash; the suite hashes
+    # hundreds, which added ~7 minutes to a run. The KDF itself is verified in
+    # test_security.py, and config.assert_prod_secrets refuses a production boot
+    # below the OWASP floor, so lowering it here cannot leak into a deployment.
+    OSPREY_PASSWORD_HASH_ITERATIONS="1000",
+    # The limiter is in-process and shared, so without this a test that logs in
+    # repeatedly would spend the budget of every test after it. Kept enabled (not
+    # disabled outright) so the limiter code stays on the tested path.
+    OSPREY_RATE_LIMIT_BACKEND="memory",
 )
 
+import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 import osprey.connectors  # noqa: E402,F401  (register connectors)
 from osprey.db import create_all, dispose, drop_all, get_sessionmaker  # noqa: E402
 from osprey.main import app  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limiter():
+    """Give every test its own counters.
+
+    The limiter is deliberately process-global in production -- that is what
+    makes it a limiter -- so tests have to reset it rather than work around it.
+    """
+    from osprey.security.ratelimit import MemoryLimiter, set_limiter
+
+    set_limiter(MemoryLimiter())
+    yield
+    set_limiter(None)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -87,7 +111,7 @@ async def auth_client(client):
         "/auth/register",
         json={
             "email": "owner@example.com",
-            "password": "supersecret1",
+            "password": "Sup3rSecret!pass",
             "full_name": "Owner",
             "org_name": "Tower B GC",
         },
@@ -96,3 +120,40 @@ async def auth_client(client):
     data = resp.json()
     client.headers["Authorization"] = f"Bearer {data['access_token']}"
     return client, data
+
+
+async def _make_member_token(session, org_id: str, role, *, email: str) -> str:
+    """Create a real user with `role` in `org_id` and return an access token.
+
+    Forging a Principal alone stopped working once the auth dependency began
+    verifying the subject against the database (token revocation). Creating the
+    user is also a better test: it exercises the same path a real caller takes.
+    """
+    from osprey.models import Membership, User
+    from osprey.security.auth import Principal, create_access_token
+    from osprey.security.passwords import hash_password
+
+    user = User(email=email, password_hash=hash_password("Sup3rSecret!pass"))
+    session.add(user)
+    await session.flush()
+    session.add(Membership(org_id=org_id, user_id=user.id, role=role))
+    await session.commit()
+    return create_access_token(
+        Principal(
+            user_id=user.id,
+            org_id=org_id,
+            role=role,
+            email=email,
+            token_version=user.token_version,
+        )
+    )
+
+
+@pytest.fixture
+def member_token(session):
+    """Factory: ``await member_token(org_id, Role.viewer, email="...")``."""
+
+    async def _factory(org_id: str, role, *, email: str) -> str:
+        return await _make_member_token(session, org_id, role, email=email)
+
+    return _factory

@@ -22,6 +22,8 @@ from ..security.auth import Principal
 from ..security.oauth import (
     AuthorizeChallenge,
     AuthorizeRequest,
+    RedirectUriError,
+    assert_loopback_redirect,
     build_authorize_url,
     make_pkce,
     sign_state,
@@ -86,6 +88,15 @@ async def authorize(
     """
     if body.source_type not in registry.types():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"unknown source_type: {body.source_type}")
+    # The desktop app supplies its own loopback port, so this value is
+    # caller-controlled and goes straight into the provider's authorize request.
+    # Unvalidated, it is a request to deliver somebody's authorization code
+    # wherever the caller likes; that the provider also checks its registered
+    # redirects is a second lock, not a reason to skip this one.
+    try:
+        assert_loopback_redirect(body.redirect_uri)
+    except RedirectUriError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     await _project_or_404(session, body.project_id, principal.org_id)
 
     connector = get_connector(body.source_type)
@@ -140,7 +151,17 @@ async def exchange(
 
     source_type = claims["source_type"]
     connector = get_connector(source_type)
-    redirect_uri = body.redirect_uri or claims["redirect_uri"]
+    # The signed state is the trustworthy copy. This used to read
+    # `body.redirect_uri or claims["redirect_uri"]`, letting the request override
+    # the value that was sealed at authorize time -- which made sealing it
+    # pointless. The body is still accepted for wire compatibility, but only to
+    # be checked against the state, never to replace it.
+    redirect_uri = claims["redirect_uri"]
+    if body.redirect_uri and body.redirect_uri != redirect_uri:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "redirect_uri does not match the one this sign-in started with",
+        )
     tokens = await connector.exchange_code(body.code, redirect_uri, claims.get("cv"))
     account_ref = claims.get("account_ref") or await connector.account_ref_from_tokens(tokens)
 

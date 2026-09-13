@@ -85,6 +85,12 @@ filterwarnings = [
 [tool.coverage.run]
 source = ["osprey"]
 branch = true
+# SQLAlchemy's async layer runs database I/O inside greenlets (greenlet_spawn).
+# Without this, the tracer loses the frame after every `await session.execute(...)`
+# and reports the rest of the function as unexecuted -- which understated modules
+# like security/sessions.py by more than half and made the coverage gate measure
+# how much greenlet-switching a module does rather than how well it is tested.
+concurrency = ["thread", "greenlet"]
 omit = ["osprey/workers/main.py"]   # arq CLI entrypoint; exercised via workers/tasks.py
 
 [tool.coverage.report]
