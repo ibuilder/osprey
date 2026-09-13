@@ -30,7 +30,7 @@ never update again, and the only symptom is silence — which is why
 minutes in. Verify provenance with:
 
 ```bash
-gh attestation verify Osprey_0.3.0_x64-setup.exe --repo ibuilder/osprey
+gh attestation verify Osprey_0.3.1_x64-setup.exe --repo ibuilder/osprey
 ```
 
 ## What changed in 2024, and why it matters
