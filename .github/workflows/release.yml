@@ -333,7 +333,7 @@ jobs:
         run: gh release upload "$TAG" SHA256SUMS.txt --clobber
 
       - name: Attest the installers
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-checksums: SHA256SUMS.txt
 
