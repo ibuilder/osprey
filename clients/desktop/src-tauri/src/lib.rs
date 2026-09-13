@@ -256,6 +256,77 @@ async fn oauth_connect(
     Ok(connection)
 }
 
+/// Sign in through the org's identity provider, in the user's own browser.
+///
+/// Same loopback shape as `oauth_connect`, and deliberately so: the browser is
+/// where the user can see the provider's real address bar and certificate, which
+/// an embedded webview would hide. The difference is that this one runs *before*
+/// there is a session -- it is how the session gets created -- so it takes the
+/// backend URL as an argument rather than reading it from shared state.
+#[tauri::command]
+async fn sso_login(
+    session: State<'_, Session>,
+    base_url: String,
+) -> Result<serde_json::Value, String> {
+    if base_url.is_empty() {
+        return Err("no backend URL".into());
+    }
+
+    // 1) Bind a loopback listener; its port defines the redirect URI. RFC 8252:
+    //    a native app registers http://127.0.0.1 with a wildcard port.
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| format!("bind failed: {e}"))?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let redirect_uri = format!("http://127.0.0.1:{port}/callback");
+
+    let http = reqwest::Client::new();
+
+    // 2) Ask the backend to start the flow (it holds the client secret and PKCE).
+    let start: AuthorizeResp = http
+        .post(format!("{base_url}/auth/sso/start"))
+        .json(&serde_json::json!({ "redirect_uri": redirect_uri }))
+        .send()
+        .await
+        .map_err(|e| format!("SSO start failed: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("SSO is not available on this server: {e}"))?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3) The provider's consent page, in the system browser.
+    open_url(&start.authorize_url);
+
+    // 4) Wait for the redirect back with ?code=...&state=...
+    let (code, state) = wait_for_code(listener).await?;
+    if state != start.state {
+        return Err("state mismatch — possible CSRF; aborting".into());
+    }
+
+    // 5) Relay to the backend, which verifies the ID token and mints our session.
+    let tokens: serde_json::Value = http
+        .post(format!("{base_url}/auth/sso/callback"))
+        .json(&serde_json::json!({ "code": code, "state": state }))
+        .send()
+        .await
+        .map_err(|e| format!("SSO callback failed: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("sign-in was refused: {e}"))?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Adopt the session immediately so a connector OAuth flow can follow without
+    // a second round trip through the frontend.
+    if let Some(access) = tokens.get("access_token").and_then(|v| v.as_str()) {
+        *session.base_url.lock().unwrap() = base_url;
+        *session.token.lock().unwrap() = access.to_string();
+    }
+
+    Ok(tokens)
+}
+
 /// Accept one loopback request and pull `code` + `state` from the query string.
 async fn wait_for_code(listener: TcpListener) -> Result<(String, String), String> {
     let (mut stream, _) = listener.accept().await.map_err(|e| e.to_string())?;
@@ -362,6 +433,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_session,
             oauth_connect,
+            sso_login,
             backend_status
         ])
         .build(tauri::generate_context!())
