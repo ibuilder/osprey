@@ -5,27 +5,92 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from ..models import ActionType, AIProvider, Role
+from .types import EmailStr
 
 
 # ---- Auth ------------------------------------------------------------------ #
 class RegisterRequest(BaseModel):
-    email: str
-    password: str = Field(min_length=8)
-    full_name: str = ""
-    org_name: str = "My Org"
+    # EmailStr rejects the addresses that would otherwise reach the connector and
+    # notification layers and fail there instead, where the error is opaque.
+    # Strength is enforced separately (security.passwords.check_policy) so the
+    # rule set stays configurable per deployment rather than baked into the DTO.
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=1024)
+    full_name: str = Field(default="", max_length=200)
+    org_name: str = Field(default="My Org", max_length=200)
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: EmailStr
+    password: str = Field(max_length=1024)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=16, max_length=512)
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(max_length=1024)
+    new_password: str = Field(min_length=8, max_length=1024)
+
+
+class SessionOut(BaseModel):
+    id: str
+    created_at: str
+    expires_at: str
+    user_agent: str = ""
+    ip: str = ""
 
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    # Absent on flows that must not mint a long-lived session (SCIM, service
+    # tokens); present on interactive sign-in.
+    refresh_token: str | None = None
+    expires_in: int = 0
     role: Role
     org_id: str
     user_id: str
+
+
+# ---- Members / invites ----------------------------------------------------- #
+class InviteCreate(BaseModel):
+    email: EmailStr
+    role: Role = Role.viewer
+    expires_days: int = Field(default=7, ge=1, le=90)
+
+
+class InviteOut(BaseModel):
+    id: str
+    email: str
+    role: Role
+    invited_by: str = ""
+    expires_at: str = ""
+    accepted: bool = False
+    # The single-use token, returned once at creation so the caller can deliver
+    # it however they like (Osprey does not send mail). Never re-readable.
+    token: str | None = None
+
+
+class InviteAccept(BaseModel):
+    token: str = Field(min_length=16, max_length=512)
+    password: str = Field(min_length=8, max_length=1024)
+    full_name: str = Field(default="", max_length=200)
+
+
+class MemberOut(BaseModel):
+    user_id: str
+    email: str
+    full_name: str = ""
+    role: Role
+    is_active: bool = True
+    scim_managed: bool = False
+    last_login_at: str | None = None
+
+
+class MemberRoleUpdate(BaseModel):
+    role: Role
 
 
 # ---- Projects -------------------------------------------------------------- #
@@ -179,3 +244,60 @@ class ItemOut(BaseModel):
     owner: str | None = None
     score: float | None = None
     bucket: str | None = None
+
+
+# ---- Governance ------------------------------------------------------------ #
+class RetentionPolicy(BaseModel):
+    """Per-tenant retention overrides, in days. None inherits the deployment
+    default; 0 means keep forever."""
+
+    signal_days: int | None = Field(default=None, ge=0, le=3650)
+    item_days: int | None = Field(default=None, ge=0, le=3650)
+
+
+class RetentionOut(BaseModel):
+    signal_days: int | None = None
+    item_days: int | None = None
+    effective_signal_days: int = 0
+    effective_item_days: int = 0
+
+
+class PurgePreview(BaseModel):
+    """What a retention run would delete right now, without deleting it."""
+
+    signals: int = 0
+    items: int = 0
+    scores: int = 0
+    snapshots: int = 0
+    cutoff_signal: str | None = None
+    cutoff_item: str | None = None
+
+
+class DeletionRequest(BaseModel):
+    # Deleting a tenant is unrecoverable, so the caller must name it exactly.
+    # A checkbox is not enough friction for an irreversible cross-table wipe.
+    confirm_org_name: str
+
+
+class DeletionStatus(BaseModel):
+    org_id: str
+    requested_at: str | None = None
+    completed: bool = False
+    deleted_rows: dict[str, int] = {}
+
+
+# ---- SCIM tokens ----------------------------------------------------------- #
+class ScimTokenCreate(BaseModel):
+    name: str = Field(default="", max_length=120)
+    max_role: Role = Role.pm
+
+
+class ScimTokenOut(BaseModel):
+    id: str
+    name: str
+    max_role: Role
+    created_at: str = ""
+    last_used_at: str | None = None
+    revoked: bool = False
+    #: Returned once, at creation.
+    token: str | None = None

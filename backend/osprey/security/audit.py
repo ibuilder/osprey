@@ -74,6 +74,25 @@ async def record(
 
 
 async def verify_chain(session: AsyncSession, org_id: str) -> bool:
+    """True when every retained record still hashes to its recorded value."""
+    return (await verify_chain_detail(session, org_id))["valid"]
+
+
+async def verify_chain_detail(session: AsyncSession, org_id: str) -> dict[str, Any]:
+    """Verify the chain and describe where it starts.
+
+    What this proves: no retained record has been altered, reordered, or removed
+    from the *middle* -- any of those breaks the hash of every record after it.
+
+    What it does not prove: that the chain begins at the beginning. A chain whose
+    first record carries a non-empty ``prev_hash`` has had its oldest records
+    truncated, which is what the retention purge does deliberately
+    (``OSPREY_RETENTION_AUDIT_DAYS``) and is also what an attacker with database
+    access would do to erase their entry. The two are indistinguishable from the
+    chain alone, so the result reports ``anchored_at_genesis`` rather than
+    quietly accepting a truncated chain as pristine. Ship the audit log off-box
+    if you need that distinction to be decidable.
+    """
     rows = (
         (
             await session.execute(
@@ -85,10 +104,23 @@ async def verify_chain(session: AsyncSession, org_id: str) -> bool:
         .scalars()
         .all()
     )
-    prev_hash = ""
-    for row in rows:
+    if not rows:
+        return {"valid": True, "records": 0, "anchored_at_genesis": True, "broken_at": None}
+
+    prev_hash = rows[0].prev_hash
+    for index, row in enumerate(rows):
         canonical = _canonical(row.actor, row.action, row.target, row.meta, row.created_at)
         if row.prev_hash != prev_hash or row.hash != _digest(prev_hash, canonical):
-            return False
+            return {
+                "valid": False,
+                "records": len(rows),
+                "anchored_at_genesis": rows[0].prev_hash == "",
+                "broken_at": index,
+            }
         prev_hash = row.hash
-    return True
+    return {
+        "valid": True,
+        "records": len(rows),
+        "anchored_at_genesis": rows[0].prev_hash == "",
+        "broken_at": None,
+    }

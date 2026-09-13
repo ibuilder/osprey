@@ -5,6 +5,12 @@ metadata:
   labels: {{- include "osprey.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount.worker }}
+  strategy:
+    # Recreate, not RollingUpdate. ARQ cron jobs are not leader-elected, so two
+    # generations running concurrently during a roll would fire every scheduled
+    # poll twice. Ingestion is idempotent (dedupe on external_id), but the
+    # retention purge is not something to run twice by accident.
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "osprey.name" . }}
@@ -13,15 +19,62 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: {{ include "osprey.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: worker
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      serviceAccountName: {{ .Values.serviceAccount.name | default (include "osprey.fullname" .) }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Long enough for an in-flight connector poll or export to finish.
+      terminationGracePeriodSeconds: 60
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes: {{- include "osprey.tmpVolume" . | nindent 8 }}
       containers:
         - name: worker
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["arq", "osprey.workers.main.WorkerSettings"]
+          securityContext: {{- include "osprey.containerSecurityContext" . | nindent 12 }}
           env:
             {{- include "osprey.env" . | nindent 12 }}
             {{- include "osprey.appDbEnv" . | nindent 12 }}
+          volumeMounts: {{- include "osprey.tmpMount" . | nindent 12 }}
+          # The worker serves no HTTP, so it is probed by asking Redis whether the
+          # queue is reachable. Previously it had no probe at all: a worker that
+          # lost Redis stayed Ready forever and silently stopped polling.
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - |
+                  import asyncio, sys
+                  from arq.connections import RedisSettings, create_pool
+                  from osprey.config import settings
+                  async def main():
+                      pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+                      await pool.ping()
+                      await pool.aclose()
+                  try:
+                      asyncio.run(main())
+                  except Exception as exc:
+                      print(exc, file=sys.stderr)
+                      sys.exit(1)
+            initialDelaySeconds: 20
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
           resources: {{- toYaml .Values.resources.worker | nindent 12 }}

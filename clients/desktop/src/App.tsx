@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Api, DEFAULT_BASE, Hotlist, Session } from "./api";
 
 type Tab = "hotlist" | "connections" | "ai" | "scripts";
@@ -7,7 +7,7 @@ type Tab = "hotlist" | "connections" | "ai" | "scripts";
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   if (!session) return <Login onLogin={setSession} />;
-  return <Main session={session} onLogout={() => setSession(null)} />;
+  return <Main session={session} onSession={setSession} />;
 }
 
 export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
@@ -19,6 +19,8 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   const [orgName, setOrgName] = useState("");
   const [mode, setMode] = useState<"login" | "register">("login");
   const [err, setErr] = useState("");
+  const [sso, setSso] = useState<{ enabled: boolean; issuer: string } | null>(null);
+  const [ssoBusy, setSsoBusy] = useState(false);
 
   // The bundle ships its own backend. Poll for it to come up and adopt its URL, so a
   // fresh install needs no setup. If it never appears (dev in a browser, or a build
@@ -68,6 +70,47 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
     };
   }, []);
 
+  // Ask the server whether it offers SSO, once we know which server that is.
+  // Re-runs when the sidecar handshake replaces the default URL, and when the
+  // user edits the field themselves.
+  useEffect(() => {
+    if (starting || !baseUrl) return;
+    let cancelled = false;
+    Api.ssoConfig(baseUrl).then((cfg) => {
+      if (!cancelled) setSso(cfg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl, starting]);
+
+  async function signInWithSso() {
+    setErr("");
+    setSsoBusy(true);
+    try {
+      // The Rust shell runs the loopback listener and the browser round trip;
+      // the provider's own address bar is the thing the user needs to see, and
+      // an embedded webview would hide it.
+      const d = await invoke<Record<string, unknown>>("sso_login", { baseUrl });
+      onLogin({
+        baseUrl,
+        token: String(d.access_token ?? ""),
+        refreshToken: (d.refresh_token as string | null) ?? null,
+        role: String(d.role ?? "viewer"),
+        orgId: String(d.org_id ?? ""),
+        userId: String(d.user_id ?? ""),
+      });
+    } catch (e) {
+      setErr(
+        String(e).includes("sso_login")
+          ? "Single sign-on needs the desktop app; it cannot run in a browser tab."
+          : String(e),
+      );
+    } finally {
+      setSsoBusy(false);
+    }
+  }
+
   async function submit() {
     setErr("");
     try {
@@ -99,6 +142,20 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
         ) : (
           <input placeholder="Backend URL" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
         )}
+        {sso?.enabled && (
+          <>
+            <button
+              style={{ width: "100%" }}
+              onClick={signInWithSso}
+              disabled={starting || ssoBusy}
+            >
+              {ssoBusy ? "Waiting for your browser…" : "Sign in with SSO"}
+            </button>
+            <div className="muted" style={{ textAlign: "center", fontSize: 12 }}>
+              or use an Osprey password
+            </div>
+          </>
+        )}
         <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         {mode === "register" && (
@@ -118,8 +175,22 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   );
 }
 
-function Main({ session, onLogout }: { session: Session; onLogout: () => void }) {
-  const api = new Api(session);
+function Main({
+  session,
+  onSession,
+}: {
+  session: Session;
+  /** Called with a refreshed session, or null when the session has ended. */
+  onSession: (s: Session | null) => void;
+}) {
+  // Memoised on the session token: rebuilding the client every render would
+  // discard its in-flight refresh, so several 401s could each start their own
+  // exchange -- and a refresh token used twice is treated by the server as theft.
+  const api = useMemo(
+    () => new Api(session, onSession),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session.token, session.baseUrl],
+  );
   const [tab, setTab] = useState<Tab>("hotlist");
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [projectId, setProjectId] = useState<string>("");
@@ -154,7 +225,16 @@ function Main({ session, onLogout }: { session: Session; onLogout: () => void })
           {(["hotlist", "connections", "ai", "scripts"] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>
           ))}
-          <button onClick={onLogout}>Sign out</button>
+          <button
+            onClick={async () => {
+              // Revoke server-side too: dropping the local token would leave the
+              // session live for anyone holding a copy of the refresh token.
+              await api.logout();
+              onSession(null);
+            }}
+          >
+            Sign out
+          </button>
         </div>
       </div>
       <div className="body">

@@ -18,7 +18,7 @@ from osprey.security.passwords import hash_password
 
 
 async def test_register_rejects_duplicate_email(client):
-    body = {"email": "dupe@example.com", "password": "password123", "org_name": "A"}
+    body = {"email": "dupe@example.com", "password": "Sup3rSecret!pass", "org_name": "A"}
     first = await client.post("/auth/register", json=body)
     assert first.status_code == 201
     second = await client.post("/auth/register", json=body)
@@ -28,16 +28,16 @@ async def test_register_rejects_duplicate_email(client):
 async def test_register_is_case_insensitive_on_email(client):
     await client.post(
         "/auth/register",
-        json={"email": "Mixed@Example.com", "password": "password123", "org_name": "A"},
+        json={"email": "Mixed@Example.com", "password": "Sup3rSecret!pass", "org_name": "A"},
     )
     dupe = await client.post(
         "/auth/register",
-        json={"email": "mixed@example.com", "password": "password123", "org_name": "B"},
+        json={"email": "mixed@example.com", "password": "Sup3rSecret!pass", "org_name": "B"},
     )
     assert dupe.status_code == 409
     # ...and login works regardless of the case supplied.
     login = await client.post(
-        "/auth/login", json={"email": "MIXED@example.com", "password": "password123"}
+        "/auth/login", json={"email": "MIXED@example.com", "password": "Sup3rSecret!pass"}
     )
     assert login.status_code == 200
 
@@ -50,14 +50,16 @@ async def test_register_rejects_short_password(client):
 
 
 async def test_login_unknown_email_is_401(client):
-    resp = await client.post("/auth/login", json={"email": "nobody@x.com", "password": "whatever1"})
+    resp = await client.post(
+        "/auth/login", json={"email": "nobody@x.com", "password": "Wr0ng!password"}
+    )
     assert resp.status_code == 401
 
 
 async def test_login_disabled_user_is_403(client, session):
     await client.post(
         "/auth/register",
-        json={"email": "off@example.com", "password": "password123", "org_name": "A"},
+        json={"email": "off@example.com", "password": "Sup3rSecret!pass", "org_name": "A"},
     )
     user = (await session.execute(select(User).where(User.email == "off@example.com"))).scalar_one()
     user.is_active = False
@@ -65,19 +67,19 @@ async def test_login_disabled_user_is_403(client, session):
     await session.commit()
 
     resp = await client.post(
-        "/auth/login", json={"email": "off@example.com", "password": "password123"}
+        "/auth/login", json={"email": "off@example.com", "password": "Sup3rSecret!pass"}
     )
     assert resp.status_code == 403
 
 
 async def test_login_without_membership_is_403(client, session):
     """A user with no org membership cannot obtain a token."""
-    user = User(email="orphan@example.com", password_hash=hash_password("password123"))
+    user = User(email="orphan@example.com", password_hash=hash_password("Sup3rSecret!pass"))
     session.add(user)
     await session.commit()
 
     resp = await client.post(
-        "/auth/login", json={"email": "orphan@example.com", "password": "password123"}
+        "/auth/login", json={"email": "orphan@example.com", "password": "Sup3rSecret!pass"}
     )
     assert resp.status_code == 403
 
@@ -87,14 +89,14 @@ async def test_login_returns_the_membership_role(client, session):
     org = Org(name="RoleCo")
     session.add(org)
     await session.flush()
-    user = User(email="pm@example.com", password_hash=hash_password("password123"))
+    user = User(email="pm@example.com", password_hash=hash_password("Sup3rSecret!pass"))
     session.add(user)
     await session.flush()
     session.add(Membership(org_id=org.id, user_id=user.id, role=Role.pm))
     await session.commit()
 
     resp = await client.post(
-        "/auth/login", json={"email": "pm@example.com", "password": "password123"}
+        "/auth/login", json={"email": "pm@example.com", "password": "Sup3rSecret!pass"}
     )
     assert resp.status_code == 200
     assert resp.json()["role"] == "pm"
@@ -141,13 +143,13 @@ async def test_cross_org_project_access_is_404(client):
     a = (
         await client.post(
             "/auth/register",
-            json={"email": "a@a.com", "password": "password123", "org_name": "A"},
+            json={"email": "a@a.com", "password": "Sup3rSecret!pass", "org_name": "A"},
         )
     ).json()
     b = (
         await client.post(
             "/auth/register",
-            json={"email": "b@b.com", "password": "password123", "org_name": "B"},
+            json={"email": "b@b.com", "password": "Sup3rSecret!pass", "org_name": "B"},
         )
     ).json()
 

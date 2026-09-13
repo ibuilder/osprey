@@ -34,13 +34,11 @@ async def test_admin_features(auth_client):
     assert feats["scripts"] is True
 
 
-async def test_admin_requires_admin_role(auth_client, client):
+async def test_admin_requires_admin_role(auth_client, client, member_token):
     _, owner = auth_client
     from osprey.models import Role
-    from osprey.security.auth import Principal, create_access_token
 
-    viewer = Principal(user_id="v", org_id=owner["org_id"], role=Role.viewer, email="v@x.com")
-    token = create_access_token(viewer)
+    token = await member_token(owner["org_id"], Role.viewer, email="viewer-admin@x.com")
     r = await client.get("/admin/stats", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 403
 

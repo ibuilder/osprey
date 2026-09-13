@@ -60,5 +60,15 @@ Connectors are tested against recorded fixtures — never live production data.
 ## CI expectations (all blocking)
 ruff lint **and** `ruff format --check`, mypy, pytest with a coverage floor, on Python
 3.11/3.12/3.13; plus frontend (tsc+vite) and Rust (fmt/clippy/build) jobs. Run the four
-backend commands above before every commit. After an intentional dependency upgrade,
-regenerate `backend/constraints.txt` (see the header in that file).
+backend commands above before every commit.
+
+Dependencies are pinned in two files. `backend/constraints.txt` is the test set and
+Dependabot maintains it. `backend/constraints-prod.txt` pins the runtime extras the
+image installs and the suite never does; it is GENERATED, and Dependabot cannot keep
+it in step because it resolves each manifest in isolation. After any dependency
+change, regenerate it:
+
+    python backend/tools/regen_constraints.py
+
+CI runs the same script with `--check`, so a stale or jointly-unresolvable pin set
+fails there rather than at image build time.

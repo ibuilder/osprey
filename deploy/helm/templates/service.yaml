@@ -7,8 +7,11 @@ spec:
   type: {{ .Values.service.type }}
   selector:
     app.kubernetes.io/name: {{ include "osprey.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: api
   ports:
-    - port: {{ .Values.service.port }}
+    # Named so the ServiceMonitor can select it by name rather than by number.
+    - name: http
+      port: {{ .Values.service.port }}
       targetPort: 8000
       protocol: TCP

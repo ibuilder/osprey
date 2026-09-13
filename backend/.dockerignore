@@ -11,6 +11,13 @@ venv/
 coverage.xml
 htmlcov/
 
+# PyInstaller output for the desktop sidecar: ~80 MB of frozen interpreter that
+# has nothing to do with the server image, and would be uploaded as build context
+# on every single build.
+build-sidecar/
+dist-sidecar/
+packaging/
+
 # Dev data / generated artifacts — never ship these in an image.
 *.db
 *.sqlite3

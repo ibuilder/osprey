@@ -60,6 +60,53 @@ def make_pkce() -> tuple[str, str]:
     return verifier, challenge
 
 
+class RedirectUriError(ValueError):
+    """A client-supplied redirect URI is not acceptable."""
+
+
+def is_loopback_redirect(uri: str) -> bool:
+    """True for the redirect shape a native app is allowed to ask for.
+
+    RFC 8252: a desktop app cannot use a fixed redirect, so it binds an ephemeral
+    loopback port and registers ``http://127.0.0.1`` with a wildcard port. Plain
+    HTTP is correct here precisely because the traffic never leaves the machine.
+
+    ``localhost`` is deliberately rejected. It resolves through the host's name
+    resolution, which another process can influence; the literal loopback
+    addresses cannot be redirected. Credentials and fragments are rejected too --
+    neither has any business in a redirect target, and both are places to smuggle
+    something past a naive comparison.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(uri)
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "http"
+        and parsed.hostname in {"127.0.0.1", "::1"}
+        and not parsed.username
+        and not parsed.password
+        and not parsed.fragment
+    )
+
+
+def assert_loopback_redirect(uri: str) -> str:
+    """Return ``uri`` if a native client may use it; raise otherwise.
+
+    Echoing a caller-supplied URL into a provider's authorize request unchecked is
+    how authorization codes get delivered to somebody else. That providers also
+    enforce a registered redirect is a second lock, not a reason to leave this one
+    open.
+    """
+    if not is_loopback_redirect(uri):
+        raise RedirectUriError(
+            "redirect_uri must be a loopback address (http://127.0.0.1:<port>/...)"
+        )
+    return uri
+
+
 def sign_state(payload: dict) -> str:
     now = utcnow()
     body = {**payload, "iat": int(now.timestamp()), "exp": int((now + _STATE_TTL).timestamp())}

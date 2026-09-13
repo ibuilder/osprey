@@ -10,6 +10,9 @@
 # Regenerate after an intentional upgrade:
 #   pip freeze --exclude-editable | grep -v '^osprey-core' | sort > constraints.txt
 # (then re-add this header)
+#
+# Then regenerate the production pins too, or CI will reject the pair:
+#   python backend/tools/regen_constraints.py
 
 PyJWT==2.13.0
 PyYAML==6.0.3

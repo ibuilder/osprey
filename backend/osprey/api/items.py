@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..engine.learn import record_action
-from ..models import Item, Project, Role, Score, Signal
+from ..models import Item, ItemStatus, Project, Role, Score, Signal
 from ..schemas import ActionRequest, ItemOut
 from ..security import audit
 from ..security.auth import Principal
@@ -24,18 +24,89 @@ async def _latest_score(session: AsyncSession, item_id: str) -> Score | None:
     ).scalar_one_or_none()
 
 
+async def _latest_scores(session: AsyncSession, item_ids: list[str]) -> dict[str, Score]:
+    """Newest score per item, in one query instead of one query per item.
+
+    A correlated ``MAX(version)`` subquery would be the tidier SQL, but it does
+    not translate identically across SQLite and Postgres for the tie case (two
+    rows sharing a version, which the scorer can produce on a same-second
+    rescore). Fetching the candidate rows and folding them in Python keeps the
+    two backends byte-identical, which the test suite depends on, and the row
+    count is bounded by the page size.
+    """
+    if not item_ids:
+        return {}
+    rows = (
+        (
+            await session.execute(
+                select(Score)
+                .where(Score.item_id.in_(item_ids))
+                .order_by(Score.item_id, Score.version.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Ascending order means the last write per item wins, i.e. the highest version.
+    return {row.item_id: row for row in rows}
+
+
 @router.get("/projects/{project_id}/items", response_model=list[ItemOut])
 async def list_items(
     project: Project = Depends(project_in_org),
     session: AsyncSession = Depends(db_session),
     principal: Principal = Depends(current_principal),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    status_filter: ItemStatus | None = Query(default=None, alias="status"),
 ) -> list[ItemOut]:
-    items = (
-        (await session.execute(select(Item).where(Item.project_id == project.id))).scalars().all()
+    """List a project's items, highest-scoring first.
+
+    Paged and capped: an unbounded list plus a per-item score lookup was fine at
+    demo scale and a timeout on a real project with tens of thousands of items.
+    Ordering happens in SQL against the score table so that paging is stable --
+    sorting a page in Python would give a different page-2 depending on what
+    landed in page 1.
+    """
+    ranked = (
+        select(Item.id, Score.total)
+        .join(Score, Score.item_id == Item.id, isouter=True)
+        .where(Item.project_id == project.id)
     )
+    if status_filter is not None:
+        ranked = ranked.where(Item.status == status_filter)
+    # NULL scores sort last; unscored items are not more urgent than scored ones.
+    ranked = (
+        ranked.order_by(func.coalesce(Score.total, -1).desc(), Item.id.asc())
+        .limit(limit)
+        .offset(offset)
+    )
+
+    rows = (await session.execute(ranked)).all()
+    ordered_ids = []
+    seen: set[str] = set()
+    for item_id, _total in rows:
+        # An item with several score versions appears once per version in the
+        # join; keep the first (highest total) occurrence only.
+        if item_id not in seen:
+            seen.add(item_id)
+            ordered_ids.append(item_id)
+    if not ordered_ids:
+        return []
+
+    items = {
+        item.id: item
+        for item in (await session.execute(select(Item).where(Item.id.in_(ordered_ids))))
+        .scalars()
+        .all()
+    }
+    scores = await _latest_scores(session, ordered_ids)
     out: list[ItemOut] = []
-    for item in items:
-        score = await _latest_score(session, item.id)
+    for item_id in ordered_ids:
+        item = items.get(item_id)
+        if item is None:  # pragma: no cover - deleted between the two queries
+            continue
+        score = scores.get(item_id)
         out.append(
             ItemOut(
                 id=item.id,
@@ -48,7 +119,6 @@ async def list_items(
                 bucket=score.bucket.value if score else None,
             )
         )
-    out.sort(key=lambda i: i.score or -1, reverse=True)
     return out
 
 

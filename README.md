@@ -55,11 +55,10 @@ cd backend && python -m osprey.seed
   accounts) and a mobile viewer. They are **viewers**: they connect to the brain, they
   don't contain it.
 
-> **So the desktop app needs the brain running somewhere it can reach** — by default
-> `http://localhost:8000`, changeable on the sign-in screen. Installing only the app
-> gets you a sign-in screen with nothing behind it. See [Run it](#run-it) below;
-> a one-installer, nothing-else-required build is on the
-> [roadmap](docs/backlog.md#self-contained-desktop-build-no-separate-backend), not done.
+> **The desktop installer ships its own backend.** The app spawns it on a loopback
+> port at first launch and adopts its URL automatically, so a single install needs
+> no setup and nothing leaves the machine. To point the app at a shared server
+> instead, edit **Backend URL** on the sign-in screen. See [Run it](#run-it).
 
 ---
 
@@ -79,13 +78,18 @@ cd backend && python -m osprey.seed
 | **User Python background scripts** (sandboxed) that emit signals into the hotlist | ✅ |
 | Exports: styled Excel + branded PDF from one `HotlistSnapshot` | ✅ |
 | Security: token vault (AES-GCM), RBAC, JWT auth, append-only audit log | ✅ |
+| **Enterprise identity**: OIDC **SSO** (PKCE + JWKS, with a Sign in with SSO button in the desktop app) · **SCIM 2.0** provisioning · invites · member management | ✅ |
+| **Revocable sessions**: rotating refresh tokens with reuse detection, logout-everywhere, per-device revocation | ✅ |
+| **API hardening**: security headers · per-caller + credential rate limits · account lockout · body caps · request ids | ✅ |
+| **Data governance**: per-tenant retention, subject-access export, right-to-delete | ✅ |
+| **Ops**: Prometheus `/metrics` · `/live` `/ready` `/health` probes · fail-fast prod config validation | ✅ |
 | REST + webhook + **WebSocket (live hotlist)** API (FastAPI) | ✅ |
 | Background workers (ARQ: poll · ingest · score · run-scripts · notify) | ✅ |
 | **Push**: device registration + APNs/FCM/Web-Push sender abstraction | ✅ |
 | Admin console (connection health · audit verify · stats · feature flags) | ✅ |
 | **Tauri 2.0 desktop client** (tray · live hotlist · connect · AI · scripts) + **mobile viewer** scaffold | ✅ |
-| Tests: 101 backend (connector poll-loops, Postgres **RLS isolation proven**, ~79% cov) + **11 desktop UI component tests** | ✅ |
-| docker-compose + **Helm chart** (api · worker · migrations · ingress) | ✅ |
+| Tests: **324 backend** (~86% cov; connector poll-loops, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation) + **31 desktop tests** | ✅ |
+| docker-compose + **Helm chart** (api · worker · migrations · ingress · HPA · PDB · NetworkPolicy · ServiceMonitor) | ✅ |
 | CI (9 blocking jobs): Python **3.11/3.12/3.13** · ruff lint+format · mypy · coverage gate · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · SBOM · pip-audit / npm-audit / Trivy | ✅ |
 
 ## Run it
@@ -108,6 +112,21 @@ export. What you *don't* get: background polling of connected sources (that is t
 worker), and Postgres-backed features like pgvector search and DB-enforced tenant
 isolation.
 
+### Deploying it for real
+
+The API **refuses to boot** with `OSPREY_ENV=prod` and any default secret, a
+SQLite database, `OSPREY_DEBUG` on, or an empty CORS origin list — a deploy that
+would be unprotected fails at rollout instead of quietly serving traffic.
+
+[**docs/operations.md**](docs/operations.md) is the runbook: the pre-deploy
+checklist, backup and tested restore (including why `pg_dump` as the app role
+silently produces an empty dump once RLS is on), key rotation for each of the
+three secrets, retention and erasure, what to alert on, and incident response.
+
+[**docs/enterprise.md**](docs/enterprise.md) covers getting a team in: invites and
+roles, OIDC SSO (with Entra/Okta/Google specifics), SCIM 2.0 provisioning, and how
+sessions and multi-tenancy actually behave.
+
 ### Option B — the full stack (Docker)
 
 ```bash
@@ -127,7 +146,17 @@ Windows `.exe`/`.msi`, macOS `.dmg` (Apple silicon and Intel), and Linux
 Nothing is code-signed yet, so the first launch takes an extra click: Windows
 SmartScreen needs *More info → Run anyway*, and macOS Gatekeeper needs
 right-click → *Open*. See [docs/code-signing.md](docs/code-signing.md) for where
-that stands. To build from source instead:
+that stands.
+
+Until it is, verify what you downloaded — every release publishes
+`SHA256SUMS.txt` and signed build provenance:
+
+```bash
+gh attestation verify Osprey_0.2.2_x64-setup.exe --repo ibuilder/osprey
+```
+
+Updates *are* signed: an installed copy checks every update against a key
+compiled into it and discards anything else. To build from source instead:
 
 ```bash
 cd clients/desktop && npm install && npm run tauri dev   # needs the Rust toolchain

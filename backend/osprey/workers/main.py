@@ -45,13 +45,25 @@ async def renew_subscriptions(ctx: dict) -> dict:
         return await tasks.renew_subscriptions(session, notify_base=settings.public_base_url)
 
 
+async def purge_retention(ctx: dict) -> dict:
+    async with session_scope() as session:
+        return await tasks.purge_retention(session)
+
+
 async def startup(ctx: dict) -> None:
     configure_logging(settings.log_level)
     log.info("Osprey worker online (redis=%s)", settings.redis_url)
 
 
 class WorkerSettings:
-    functions = [poll_connection, refresh_project, poll_all, run_scripts, renew_subscriptions]
+    functions = [
+        poll_connection,
+        refresh_project,
+        poll_all,
+        run_scripts,
+        renew_subscriptions,
+        purge_retention,
+    ]
     on_startup = startup
     # Poll every source every 5 min (webhooks add near-real-time on top); run due
     # user scripts every minute; renew webhook subscriptions hourly before they lapse.
@@ -59,5 +71,7 @@ class WorkerSettings:
         cron(poll_all, minute=set(range(0, 60, 5))),
         cron(run_scripts, minute=set(range(0, 60))),
         cron(renew_subscriptions, minute={7}),
+        # Retention deletes rows; run it once, off-peak, not on every worker tick.
+        cron(purge_retention, hour={3}, minute={17}),
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

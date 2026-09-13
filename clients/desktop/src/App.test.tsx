@@ -255,6 +255,81 @@ describe("Login", () => {
   });
 });
 
+describe("Login — single sign-on", () => {
+  it("offers no SSO button when the server has none", async () => {
+    const { Api } = await import("./api");
+    vi.spyOn(Api, "ssoConfig").mockResolvedValue({ enabled: false, issuer: "" });
+
+    render(<Login onLogin={vi.fn()} />);
+
+    await screen.findByRole("button", { name: "Sign in" });
+    expect(screen.queryByRole("button", { name: /Sign in with SSO/ })).not.toBeInTheDocument();
+  });
+
+  it("offers SSO when the server advertises it, without hiding password sign-in", async () => {
+    // Password sign-in must stay reachable: SCIM-provisioned staff use the IdP,
+    // but a contractor invited by email has no account there.
+    const { Api } = await import("./api");
+    vi.spyOn(Api, "ssoConfig").mockResolvedValue({
+      enabled: true,
+      issuer: "https://idp.example.com",
+    });
+
+    render(<Login onLogin={vi.fn()} />);
+
+    expect(await screen.findByRole("button", { name: /Sign in with SSO/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+  });
+
+  it("hands the session to the app when the browser round trip succeeds", async () => {
+    const user = userEvent.setup();
+    const { Api } = await import("./api");
+    vi.spyOn(Api, "ssoConfig").mockResolvedValue({ enabled: true, issuer: "https://idp" });
+    const onLogin = vi.fn();
+
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "sso_login") {
+        return {
+          access_token: "a",
+          refresh_token: "r",
+          role: "pm",
+          org_id: "o1",
+          user_id: "u1",
+        };
+      }
+      return { status: "unavailable", url: null };
+    });
+
+    render(<Login onLogin={onLogin} />);
+    await user.click(await screen.findByRole("button", { name: /Sign in with SSO/ }));
+
+    await waitFor(() => expect(onLogin).toHaveBeenCalled());
+    // The refresh token has to survive this path too, or an SSO session dies
+    // silently at the first access-token expiry.
+    expect(onLogin.mock.calls[0][0]).toMatchObject({
+      token: "a",
+      refreshToken: "r",
+      role: "pm",
+    });
+  });
+
+  it("surfaces a refused SSO sign-in instead of failing silently", async () => {
+    const user = userEvent.setup();
+    const { Api } = await import("./api");
+    vi.spyOn(Api, "ssoConfig").mockResolvedValue({ enabled: true, issuer: "https://idp" });
+
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "sso_login") throw new Error("sign-in was refused: 403 Forbidden");
+      return { status: "unavailable", url: null };
+    });
+
+    render(<Login onLogin={vi.fn()} />);
+    await user.click(await screen.findByRole("button", { name: /Sign in with SSO/ }));
+
+    expect(await screen.findByText(/sign-in was refused/)).toBeInTheDocument();
+  });
+});
+
 describe("Login — bundled backend handshake", () => {
   it("adopts the sidecar URL and hides the Backend URL field when ready", async () => {
     vi.mocked(invoke).mockResolvedValueOnce({ status: "ready", url: "http://127.0.0.1:51234" });

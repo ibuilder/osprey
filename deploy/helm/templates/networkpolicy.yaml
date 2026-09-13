@@ -1,0 +1,65 @@
+{{- if .Values.networkPolicy.enabled }}
+{{/*
+Default-deny plus an allow-list. Two policies rather than one, because the API
+accepts inbound traffic and the worker accepts none -- giving the worker the
+API's ingress rules would leave it reachable for no reason.
+
+This is inert without a CNI that enforces NetworkPolicy. kind's default kindnet
+does not, which is why the deploy-smoke job leaves it off: a policy that silently
+does nothing is worse than none, because it reads like a control in a review.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "osprey.fullname" . }}-api
+  labels: {{- include "osprey.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "osprey.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        # Same namespace (the worker, and anything else co-deployed).
+        - podSelector: {}
+        {{- if .Values.ingress.enabled }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressControllerNamespace }}
+        {{- end }}
+        {{- range .Values.networkPolicy.allowedNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+        {{- if .Values.serviceMonitor.enabled }}
+        # Prometheus must reach /metrics.
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress: {{- include "osprey.egressRules" . | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "osprey.fullname" . }}-worker
+  labels: {{- include "osprey.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "osprey.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+  # Ingress omitted from policyTypes' effect by listing it with no rules: the
+  # worker serves nothing, so everything inbound is denied.
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: {{- include "osprey.egressRules" . | nindent 4 }}
+{{- end }}

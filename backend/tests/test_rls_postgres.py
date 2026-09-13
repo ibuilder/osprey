@@ -176,7 +176,7 @@ async def test_registration_works_with_rls_enforced(client):
     try:
         resp = await client.post(
             "/auth/register",
-            json={"email": "rls@example.com", "password": "password123", "org_name": "RLS Co"},
+            json={"email": "rls@example.com", "password": "Sup3rSecret!pass", "org_name": "RLS Co"},
         )
         assert resp.status_code == 201, resp.text
         assert resp.json()["access_token"]

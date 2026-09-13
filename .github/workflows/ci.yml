@@ -49,7 +49,11 @@ jobs:
       # Branch coverage is on, so this number is stricter than line coverage.
       # Ratchet the floor up as tests land; never lower it to make a PR pass.
       - name: Test + coverage
-        run: pytest -q --cov=osprey --cov-report=term-missing --cov-report=xml --cov-fail-under=77
+        # The floor moved 77 -> 82 when coverage was taught to follow greenlets
+        # (see docs/backlog.md). The old number was measuring how much a module
+        # awaited the database, not how well it was tested; 82 is the honest
+        # baseline with a couple of points of headroom.
+        run: pytest -q --cov=osprey --cov-report=term-missing --cov-report=xml --cov-fail-under=82
 
       - name: Upload coverage
         if: matrix.python == '3.12'
@@ -93,7 +97,10 @@ jobs:
       - name: Install with prod extras (asyncpg, alembic, pgvector)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install -c constraints.txt -e ".[dev,prod]"
+          # Both constraint files: constraints-prod.txt is what pins the runtime
+          # extras, and this is the only job that installs them, so it is also the
+          # only job that would notice if that file had drifted out of date.
+          pip install -c constraints.txt -c constraints-prod.txt -e ".[dev,prod]"
 
       - name: Enable pgvector extension
         run: |
@@ -107,6 +114,14 @@ jobs:
         run: |
           alembic downgrade base
           alembic upgrade head
+
+      - name: Production constraints are current
+        # Dependabot edits constraints.txt and cannot maintain constraints-prod.txt
+        # -- it resolves each manifest in isolation, so it knows neither that the
+        # two are applied together nor that the second is generated. This
+        # re-resolves and compares, so a bump that leaves the prod pins stale (or
+        # jointly unresolvable) fails here rather than at image build time.
+        run: python tools/regen_constraints.py --check
 
       - name: Model/migration drift check
         run: |
@@ -198,6 +213,77 @@ jobs:
             --set ingress.enabled=true \
             --set-string secrets.secretKey=x --set-string secrets.encryptionKey=y \
             > /tmp/rendered-rls.yaml
+      - name: Render (everything on)
+        # The optional resources -- HPA, PDB, NetworkPolicy, ServiceMonitor, SSO --
+        # render only behind their flags, so the default render never type-checks
+        # them. This is the pass that does.
+        run: |
+          helm template osprey deploy/helm \
+            --set autoscaling.enabled=true \
+            --set networkPolicy.enabled=true \
+            --set serviceMonitor.enabled=true \
+            --set ingress.enabled=true \
+            --set sso.enabled=true \
+            --set-string sso.issuer=https://idp.example.com \
+            --set-string sso.clientId=abc \
+            --set-string sso.redirectUrl=https://osprey.example.com/auth/sso/callback \
+            --set scim.enabled=true \
+            --set-string secrets.secretKey=x --set-string secrets.encryptionKey=y \
+            > /tmp/rendered-full.yaml
+          for kind in HorizontalPodAutoscaler PodDisruptionBudget NetworkPolicy ServiceMonitor; do
+            grep -q "kind: $kind" /tmp/rendered-full.yaml || { echo "missing $kind"; exit 1; }
+          done
+      - name: A single-replica PDB must be refused, not rendered
+        # minAvailable over one replica blocks every node drain forever. The chart
+        # fails the render rather than shipping a deadlock.
+        run: |
+          if helm template osprey deploy/helm --set replicaCount.api=1 > /dev/null 2>&1; then
+            echo "expected the chart to refuse a PDB over a single replica"
+            exit 1
+          fi
+      - name: Containers must drop privileges
+        run: |
+          python - <<'PY'
+          import sys, yaml
+          bad = []
+          for doc in yaml.safe_load_all(open("/tmp/rendered.yaml")):
+              if not doc or doc.get("kind") not in ("Deployment", "Job"):
+                  continue
+              for c in doc["spec"]["template"]["spec"]["containers"]:
+                  ctx = c.get("securityContext") or {}
+                  if (
+                      ctx.get("allowPrivilegeEscalation") is not False
+                      or ctx.get("readOnlyRootFilesystem") is not True
+                      or ctx.get("capabilities", {}).get("drop") != ["ALL"]
+                  ):
+                      bad.append(f'{doc["kind"]}/{doc["metadata"]["name"]}/{c["name"]}')
+          if bad:
+              sys.exit("containers without a hardened securityContext: " + ", ".join(bad))
+          print("OK: every container drops ALL capabilities on a read-only rootfs")
+          PY
+      - name: Hooks are ordered so the migration Job finds what it references
+        # Helm hooks run before the release's ordinary resources. Anything the Job
+        # names -- the Secret, the ServiceAccount -- must itself be an earlier
+        # hook, or the Job fails to schedule. This has bitten the chart once.
+        run: |
+          python - <<'PY'
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(open("/tmp/rendered.yaml")) if d]
+          def ann(d, k):
+              return (d["metadata"].get("annotations") or {}).get(k)
+          job = next(d for d in docs if d["kind"] == "Job")
+          job_weight = int(ann(job, "helm.sh/hook-weight"))
+          pod = job["spec"]["template"]["spec"]
+          referenced = {d["kind"]: d for d in docs if d["kind"] in ("Secret", "ServiceAccount")}
+          for kind, doc in referenced.items():
+              if not ann(doc, "helm.sh/hook"):
+                  sys.exit(f"{kind} is not a hook; the migration Job would run before it exists")
+              if int(ann(doc, "helm.sh/hook-weight")) >= job_weight:
+                  sys.exit(f"{kind} hook-weight must be lower than the Job's")
+          sa = referenced["ServiceAccount"]["metadata"]["name"]
+          assert pod["serviceAccountName"] == sa, pod["serviceAccountName"]
+          print("OK: the Secret and ServiceAccount are created before the migration Job")
+          PY
       - name: Assert the app and migration jobs use different DB roles
         run: |
           python - <<'PY'
@@ -258,6 +344,7 @@ jobs:
             --set image.pullPolicy=Never \
             --set config.env=prod --set config.rlsEnabled=true \
             --set replicaCount.api=1 --set replicaCount.worker=1 \
+            --set podDisruptionBudget.enabled=false \
             --set-string secrets.secretKey=ci-secret-key-at-least-32-bytes-long-0 \
             --set-string secrets.encryptionKey=ci-encryption-key \
             --set-string secrets.webhookHmacSecret=ci-hmac-secret \
@@ -289,7 +376,7 @@ jobs:
           # Register an owner, then ask the admin endpoint whether isolation is real.
           TOKEN=$(curl -fsS -X POST http://localhost:8000/auth/register \
             -H 'content-type: application/json' \
-            -d '{"email":"ci@example.com","password":"password123","org_name":"CI"}' \
+            -d '{"email":"ci@example.com","password":"Sm0ke-Test!Passw0rd","org_name":"CI"}' \
             | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
           ISO=$(curl -fsS http://localhost:8000/admin/security/tenant-isolation \
             -H "authorization: Bearer $TOKEN")
@@ -374,9 +461,13 @@ jobs:
       # fix it or add a documented, dated exception — don't silently downgrade this.
       - name: Python dependency audit (pip-audit)
         working-directory: backend
+        # Audits the extras the Docker image installs, not just the core deps.
+        # This step used to run `pip install -e "."` with no extras, so asyncpg,
+        # arq, alembic, the AI SDKs, push and OTel -- every dependency that only
+        # exists in production -- was never scanned for advisories at all.
         run: |
           python -m pip install --upgrade pip setuptools wheel pip-audit
-          pip install -c constraints.txt -e "."
+          pip install -c constraints.txt -c constraints-prod.txt -e ".[prod,ai,push,otel]"
           pip-audit --progress-spinner off
 
       - name: npm audit (desktop)

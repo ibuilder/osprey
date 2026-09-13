@@ -4,7 +4,16 @@ metadata:
   name: {{ include "osprey.fullname" . }}-api
   labels: {{- include "osprey.labels" . | nindent 4 }}
 spec:
+  {{- if not .Values.autoscaling.enabled }}
+  # Omitted entirely when the HPA owns this field, or every `helm upgrade` would
+  # reset the replica count to the chart default and undo the autoscaler.
   replicas: {{ .Values.replicaCount.api }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0        # never drop below the current capacity mid-roll
+      maxSurge: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "osprey.name" . }}
@@ -13,25 +22,67 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: {{ include "osprey.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: api
+      annotations:
+        # Roll the pods when configuration changes. Without this a `helm upgrade`
+        # that only edits the Secret leaves every pod running the old values.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      serviceAccountName: {{ .Values.serviceAccount.name | default (include "osprey.fullname" .) }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Time for in-flight requests to finish; uvicorn is started with a matching
+      # --timeout-graceful-shutdown, so a rolling update does not sever requests.
+      terminationGracePeriodSeconds: 40
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes: {{- include "osprey.tmpVolume" . | nindent 8 }}
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["uvicorn", "osprey.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          command: ["uvicorn", "osprey.main:app", "--host", "0.0.0.0", "--port", "8000",
+                    "--proxy-headers", "--forwarded-allow-ips", "*",
+                    "--timeout-graceful-shutdown", "30"]
+          securityContext: {{- include "osprey.containerSecurityContext" . | nindent 12 }}
           ports:
-            - containerPort: 8000
+            - name: http
+              containerPort: 8000
           env:
             {{- include "osprey.env" . | nindent 12 }}
             {{- include "osprey.appDbEnv" . | nindent 12 }}
+          volumeMounts: {{- include "osprey.tmpMount" . | nindent 12 }}
+          # Three probes for three questions. startup covers a slow first boot
+          # (migrations may still be finishing) without forcing liveness to carry
+          # a long initialDelay forever after.
+          startupProbe:
+            httpGet: { path: /live, port: http }
+            periodSeconds: 5
+            failureThreshold: 30        # up to 150s to come up
           readinessProbe:
-            httpGet: { path: /ready, port: 8000 }
-            initialDelaySeconds: 10
+            httpGet: { path: /ready, port: http }
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           livenessProbe:
-            httpGet: { path: /health, port: 8000 }
-            initialDelaySeconds: 15
+            # /live, not /ready: liveness must not depend on the database, or a
+            # database outage restarts the whole fleet on top of the outage.
+            httpGet: { path: /live, port: http }
             periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources: {{- toYaml .Values.resources.api | nindent 12 }}

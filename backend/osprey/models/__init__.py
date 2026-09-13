@@ -123,6 +123,14 @@ class Org(SQLModel, table=True):
     __tablename__ = "org"
     id: str = Field(default_factory=new_id, primary_key=True)
     name: str
+    # Per-tenant retention overrides, in days. NULL inherits the deployment-wide
+    # OSPREY_RETENTION_* setting; 0 means "keep forever" at either level. A tenant
+    # under a stricter regime can shorten its own window without a redeploy.
+    retention_signal_days: int | None = None
+    retention_item_days: int | None = None
+    # Set when a right-to-delete request starts. The purge worker finishes the
+    # job asynchronously, so the flag is what stops new writes in the meantime.
+    deletion_requested_at: datetime | None = Field(default=None, sa_column=_dt_column())
     created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
 
 
@@ -133,7 +141,24 @@ class User(SQLModel, table=True):
     full_name: str = ""
     password_hash: str = ""  # PBKDF2; empty for SSO-only users
     is_active: bool = True
+    # Bumped to invalidate every access token already issued to this user. Access
+    # tokens carry the value they were minted with; the auth dependency rejects
+    # any token whose copy is stale, so deactivating or demoting somebody takes
+    # effect immediately instead of at the end of the token's TTL.
+    token_version: int = 0
+    # Subject claim from the OIDC provider ("iss|sub"). Set on first SSO sign-in
+    # and matched ahead of email thereafter, because an IdP can rename a mailbox
+    # while the subject stays stable.
+    sso_subject: str = Field(default="", index=True)
+    # SCIM-managed users are owned by the identity provider: local role and status
+    # edits would be overwritten on the next sync, so the API refuses them.
+    scim_managed: bool = False
+    external_id: str = ""  # the IdP's own id, echoed back in SCIM responses
+    failed_login_count: int = 0
+    locked_until: datetime | None = Field(default=None, sa_column=_dt_column())
+    last_login_at: datetime | None = Field(default=None, sa_column=_dt_column())
     created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
 
 
 class Membership(SQLModel, table=True):
@@ -302,6 +327,64 @@ class HotlistSnapshot(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
 
 
+class RefreshToken(SQLModel, table=True):
+    """A revocable session.
+
+    Only the SHA-256 of the opaque token is stored, so a database read cannot
+    resurrect a session. ``rotated_to`` records that this token was exchanged for
+    a successor: presenting a token that was already rotated is the classic replay
+    signature, and the handler revokes the whole family when it sees one.
+    """
+
+    __tablename__ = "refresh_token"
+    id: str = Field(default_factory=new_id, primary_key=True)
+    org_id: str = Field(foreign_key="org.id", index=True)
+    user_id: str = Field(foreign_key="user.id", index=True)
+    token_hash: str = Field(index=True, unique=True)
+    family_id: str = Field(default_factory=new_id, index=True)
+    rotated_to: str | None = None
+    revoked_at: datetime | None = Field(default=None, sa_column=_dt_column())
+    user_agent: str = ""
+    ip: str = ""
+    expires_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
+
+
+class ScimToken(SQLModel, table=True):
+    """Bearer credential for an identity provider's SCIM connector.
+
+    Scoped to one org and one role ceiling: a compromised SCIM token can create
+    users, so it must not be able to create *owners*.
+    """
+
+    __tablename__ = "scim_token"
+    id: str = Field(default_factory=new_id, primary_key=True)
+    org_id: str = Field(foreign_key="org.id", index=True)
+    name: str = ""
+    token_hash: str = Field(index=True, unique=True)
+    max_role: Role = Role.pm
+    revoked_at: datetime | None = Field(default=None, sa_column=_dt_column())
+    last_used_at: datetime | None = Field(default=None, sa_column=_dt_column())
+    created_by: str = ""
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
+
+
+class Invite(SQLModel, table=True):
+    """A pending membership. The token is single-use and stored hashed."""
+
+    __tablename__ = "invite"
+    id: str = Field(default_factory=new_id, primary_key=True)
+    org_id: str = Field(foreign_key="org.id", index=True)
+    email: str = Field(index=True)
+    role: Role = Role.viewer
+    token_hash: str = Field(index=True, unique=True)
+    invited_by: str = ""
+    accepted_at: datetime | None = Field(default=None, sa_column=_dt_column())
+    revoked_at: datetime | None = Field(default=None, sa_column=_dt_column())
+    expires_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_dt_column())
+
+
 class AuditLog(SQLModel, table=True):
     __tablename__ = "audit_log"
     id: str = Field(default_factory=new_id, primary_key=True)
@@ -341,4 +424,7 @@ __all__ = [
     "Action",
     "HotlistSnapshot",
     "AuditLog",
+    "RefreshToken",
+    "ScimToken",
+    "Invite",
 ]

@@ -5,9 +5,50 @@ export const DEFAULT_BASE = "http://localhost:8000";
 export interface Session {
   baseUrl: string;
   token: string;
+  /** Opaque, single-use. Exchanged for a new pair when the access token expires. */
+  refreshToken: string | null;
   role: string;
   orgId: string;
   userId: string;
+}
+
+/** The server's error body: {detail} is a string, or a list for validation errors. */
+interface ErrorBody {
+  detail?: string | { loc?: (string | number)[]; msg?: string }[];
+  request_id?: string;
+}
+
+/**
+ * Turn a failed response into a message worth showing.
+ *
+ * The API explains *why* it refused -- which password rule was broken, that an
+ * account is locked, how long to wait -- and surfacing only the status code
+ * ("register failed: 422") throws that away and leaves the user guessing.
+ */
+export async function describeError(res: Response, fallback: string): Promise<string> {
+  let body: ErrorBody | null = null;
+  try {
+    body = (await res.json()) as ErrorBody;
+  } catch {
+    // Not JSON (a proxy error page, say); fall through to the status text.
+  }
+  const detail = body?.detail;
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    return detail
+      .map((e) => {
+        const field = (e.loc ?? []).filter((p) => p !== "body").join(".");
+        return field ? `${field}: ${e.msg ?? "is invalid"}` : (e.msg ?? "is invalid");
+      })
+      .join("; ");
+  }
+  if (res.status === 429) {
+    const retry = res.headers.get("Retry-After");
+    return retry
+      ? `Too many attempts. Try again in ${retry} seconds.`
+      : "Too many attempts. Try again shortly.";
+  }
+  return `${fallback}: ${res.status}`;
 }
 
 export interface HotlistItem {
@@ -50,11 +91,29 @@ export interface ItemDetail {
   signals: { id: string; source_type: string; source_kind: string; title: string; url: string | null; occurred_at: string | null }[];
 }
 
-export class Api {
-  constructor(private session: Session) {}
+function sessionFrom(baseUrl: string, d: any): Session {
+  return {
+    baseUrl,
+    token: d.access_token,
+    refreshToken: d.refresh_token ?? null,
+    role: d.role,
+    orgId: d.org_id,
+    userId: d.user_id,
+  };
+}
 
-  private async req<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const res = await fetch(`${this.session.baseUrl}${path}`, {
+export class Api {
+  /** Called when the session changes (token refreshed) or dies (must sign in). */
+  constructor(
+    private session: Session,
+    private onSessionChange?: (s: Session | null) => void,
+  ) {}
+
+  /** In-flight refresh, so N concurrent 401s trigger one exchange, not N. */
+  private refreshing: Promise<boolean> | null = null;
+
+  private async send(path: string, init: RequestInit): Promise<Response> {
+    return fetch(`${this.session.baseUrl}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
@@ -62,7 +121,53 @@ export class Api {
         ...(init.headers || {}),
       },
     });
-    if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  }
+
+  /**
+   * Exchange the refresh token for a new pair.
+   *
+   * Refresh tokens are single-use and rotate: presenting one twice is treated by
+   * the server as theft and kills the whole session family. So concurrent callers
+   * must share one exchange rather than each sending the same token.
+   */
+  private async refreshSession(): Promise<boolean> {
+    if (!this.session.refreshToken) return false;
+    if (!this.refreshing) {
+      this.refreshing = (async () => {
+        const res = await fetch(`${this.session.baseUrl}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: this.session.refreshToken }),
+        });
+        if (!res.ok) {
+          this.onSessionChange?.(null); // expired, revoked, or replayed
+          return false;
+        }
+        const d = await res.json();
+        this.session = {
+          ...this.session,
+          token: d.access_token,
+          refreshToken: d.refresh_token ?? null,
+          role: d.role,
+        };
+        this.onSessionChange?.(this.session);
+        return true;
+      })().finally(() => {
+        this.refreshing = null;
+      });
+    }
+    return this.refreshing;
+  }
+
+  private async req<T>(path: string, init: RequestInit = {}): Promise<T> {
+    let res = await this.send(path, init);
+    // Access tokens are short-lived by design, and the server also invalidates
+    // them immediately on a role change or a sign-out-everywhere. One retry
+    // behind a successful refresh keeps that invisible to the user.
+    if (res.status === 401 && (await this.refreshSession())) {
+      res = await this.send(path, init);
+    }
+    if (!res.ok) throw new Error(await describeError(res, "request failed"));
     const ct = res.headers.get("content-type") || "";
     return (ct.includes("json") ? await res.json() : (await res.blob())) as T;
   }
@@ -73,9 +178,31 @@ export class Api {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    if (!res.ok) throw new Error(`login failed: ${res.status}`);
-    const d = await res.json();
-    return { baseUrl, token: d.access_token, role: d.role, orgId: d.org_id, userId: d.user_id };
+    if (!res.ok) throw new Error(await describeError(res, "Sign-in failed"));
+    return sessionFrom(baseUrl, await res.json());
+  }
+
+  /** Ends this session on the server; the local token alone is not enough. */
+  async logout(): Promise<void> {
+    if (!this.session.refreshToken) return;
+    await fetch(`${this.session.baseUrl}/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: this.session.refreshToken }),
+    }).catch(() => {
+      // Signing out locally must succeed even if the server is unreachable.
+    });
+  }
+
+  /** Whether this server offers SSO, so the sign-in screen can show the button. */
+  static async ssoConfig(baseUrl: string): Promise<{ enabled: boolean; issuer: string }> {
+    try {
+      const res = await fetch(`${baseUrl}/auth/sso/config`);
+      if (!res.ok) return { enabled: false, issuer: "" };
+      return await res.json();
+    } catch {
+      return { enabled: false, issuer: "" };
+    }
   }
 
   static async register(baseUrl: string, email: string, password: string, orgName: string): Promise<Session> {
@@ -84,9 +211,8 @@ export class Api {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, org_name: orgName }),
     });
-    if (!res.ok) throw new Error(`register failed: ${res.status}`);
-    const d = await res.json();
-    return { baseUrl, token: d.access_token, role: d.role, orgId: d.org_id, userId: d.user_id };
+    if (!res.ok) throw new Error(await describeError(res, "Could not create the account"));
+    return sessionFrom(baseUrl, await res.json());
   }
 
   projects = () => this.req<{ id: string; name: string }[]>("/projects");

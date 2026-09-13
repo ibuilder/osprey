@@ -14,19 +14,61 @@ replicaCount:
 config:
   env: prod
   logLevel: INFO
-  aiProvider: deterministic          # deterministic | claude | ollama
+  aiProvider: deterministic          # deterministic | claude | openai | ollama
   hotlistTopN: "25"
   featureAiSift: "true"
   featureScripts: "true"
   # Postgres row-level security (migration 0002). Only meaningful when the runtime
   # role is an ordinary one — see secrets.databaseUrl below.
   rlsEnabled: "false"
+  # Behind an ingress the app sees the proxy's address, so per-IP rate limiting
+  # would bucket the entire internet together. Trusting the header is safe only
+  # when a proxy you control always overwrites it — which an ingress does.
+  trustProxyHeaders: "true"
+  # Required in prod: the app refuses to start with an empty CORS list, because
+  # no browser client could reach it.
+  corsAllowOrigins:
+    - "https://osprey.example.com"
+  # External URL. Webhook subscriptions cannot renew without it.
+  publicBaseUrl: "https://osprey.example.com"
+  rateLimitEnabled: "true"
+  # "auto" uses Redis when reachable and per-process counters otherwise. With
+  # more than one API replica, only "redis" enforces a genuinely global limit.
+  rateLimitBackend: "auto"
+  # 0 = keep forever. Set both to a real window before claiming a retention
+  # posture to an auditor.
+  retentionSignalDays: "0"
+  retentionItemDays: "0"
+  metricsEnabled: "true"
+
+# SSO (OIDC). The client secret goes in secrets.oidcClientSecret.
+sso:
+  enabled: false
+  issuer: ""                         # e.g. https://login.microsoftonline.com/<tenant>/v2.0
+  clientId: ""
+  # Your client's callback route, not an Osprey API path -- the client reads
+  # ?code=&state= and POSTs them to /auth/sso/callback. The desktop app needs
+  # nothing here; it uses a per-sign-in loopback port instead.
+  redirectUrl: ""                    # e.g. https://osprey.example.com/auth/callback
+  allowedEmailDomains: []            # empty = any domain the IdP verifies
+  # Off by default: with auto-provisioning on, anyone your IdP will authenticate
+  # gets an Osprey account. Leave it off and invite people, unless the IdP is
+  # already scoped to exactly the population that should have access.
+  autoProvision: false
+  defaultOrgId: ""
+  defaultRole: viewer
+
+scim:
+  # Provisioning tokens are minted per-org through the API, not here.
+  enabled: false
 
 # Secrets -> Secret (override via --set-string or a sealed/external secret).
 secrets:
   secretKey: ""                      # OSPREY_SECRET_KEY (JWT signing)
   encryptionKey: ""                  # OSPREY_ENCRYPTION_KEY (token vault)
   webhookHmacSecret: ""              # OSPREY_WEBHOOK_HMAC_SECRET
+  oidcClientSecret: ""               # OSPREY_OIDC_CLIENT_SECRET
+  metricsToken: ""                   # bearer token for /metrics; empty = open
   # Two roles by design.
   #
   # databaseUrl — the ORDINARY role the api/worker run as. Postgres superusers, and
@@ -48,6 +90,14 @@ secrets:
   migrationDatabaseUrl: "postgresql+asyncpg://osprey:osprey@osprey-postgres:5432/osprey"
   redisUrl: "redis://osprey-redis:6379/0"
   anthropicApiKey: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}                    # e.g. an IRSA / Workload Identity binding
+  # Osprey calls no Kubernetes API. Mounting a token only gives a compromised
+  # process a credential it has no use for.
+  automountServiceAccountToken: false
 
 service:
   type: ClusterIP
@@ -74,4 +124,56 @@ migrations:
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
   seccompProfile: { type: RuntimeDefault }
+
+# The container filesystem is read-only; this is the writable /tmp it needs.
+tmpVolumeSize: 256Mi
+
+autoscaling:
+  # Only the API scales on CPU. The worker's load is queue depth, not CPU, so a
+  # CPU-driven HPA on it would scale on the wrong signal; size it by hand.
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 0   # 0 disables the memory metric
+
+podDisruptionBudget:
+  # Keeps a voluntary drain (node upgrade, cluster autoscaler) from taking every
+  # API replica at once. Requires replicaCount.api >= 2 to be satisfiable.
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  # Default-deny ingress plus an explicit allow-list. Off by default because it
+  # is inert without a CNI that enforces NetworkPolicy (Calico, Cilium, and most
+  # managed clusters — but not stock kindnet).
+  enabled: false
+  # Namespaces allowed to reach the API. Empty means same-namespace only.
+  allowedNamespaces: []
+  # Let the ingress controller in when it lives in its own namespace.
+  ingressControllerNamespace: ingress-nginx
+  # Ports the pods must reach outbound: DNS, Postgres, Redis, HTTPS to providers.
+  egressPorts: [53, 5432, 6379, 443]
+
+serviceMonitor:
+  # Prometheus Operator scrape config. Enable only if the CRD is installed.
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+# Spread API replicas across nodes so one node failure is not an outage.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/component: api
