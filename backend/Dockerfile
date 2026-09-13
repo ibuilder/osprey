@@ -3,7 +3,7 @@
 # Multi-stage: the compiler toolchain builds wheels in `builder` and is left
 # behind. A single-stage build ships build-essential (~200 MB, and a large part
 # of the image's CVE surface) into production for no runtime benefit.
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -36,7 +36,7 @@ RUN python -m venv /opt/venv \
         -c constraints.txt -c constraints-prod.txt ".[${EXTRAS}]"
 
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # Populated by the release workflow; `docker inspect` then tells you exactly
 # which commit an image came from, which matters when a rollback is urgent.
