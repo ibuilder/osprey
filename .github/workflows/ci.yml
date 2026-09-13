@@ -141,6 +141,12 @@ jobs:
         working-directory: clients/desktop
     steps:
       - uses: actions/checkout@v7
+      # Cheap, and before anything slow: every version string agrees. They drifted
+      # for real (v0.2.0 shipped 0.1.0 installers; /health reported 0.1.0 for
+      # releases after that). release.yml repeats this against the tag.
+      - name: Version strings agree
+        working-directory: .
+        run: python3 scripts/check_versions.py
       - uses: actions/setup-node@v7
         with:
           node-version: 22

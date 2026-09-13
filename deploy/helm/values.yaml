@@ -2,8 +2,12 @@
 # their URLs to managed services. Secrets should come from a real secret store.
 
 image:
-  repository: ghcr.io/ospreyhq/osprey
-  tag: "0.1.0"
+  # Where release.yml publishes: ghcr.io/<repository owner>/osprey.
+  repository: ghcr.io/ibuilder/osprey
+  # Empty follows the chart: "v" + appVersion, which is exactly the tag the
+  # release workflow pushes. The old default ("0.1.0", under another owner) named
+  # an image that was never published, so a default install could not pull.
+  tag: ""
   pullPolicy: IfNotPresent
 
 replicaCount:

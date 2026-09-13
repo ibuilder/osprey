@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "osprey-core"
-version = "0.1.0"
+version = "0.3.0"
 description = "Osprey — the foreman that never sleeps. Open-source construction/RE hotlist agent (backend brain)."
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-only" }

@@ -11,11 +11,16 @@ that can fail, fails before anything is published.
 
 ## Before you tag
 
-### 1. Bump the version, in both places
+### 1. Bump the version, everywhere
 
 ```powershell
 # clients\desktop\src-tauri\tauri.conf.json   -> "version"
-# clients\desktop\package.json                -> "version"
+# clients\desktop\src-tauri\Cargo.toml        -> version   (then any cargo command updates Cargo.lock)
+# clients\desktop\package.json + lock         -> npm version X.Y.Z --no-git-tag-version
+# backend\pyproject.toml                      -> version
+# backend\osprey\__init__.py                  -> __version__ (what /health and metrics report)
+# deploy\helm\Chart.yaml                      -> version and appVersion
+python scripts\check_versions.py --tag vX.Y.Z
 ```
 
 **This is the step that has actually gone wrong.** Tag `v0.2.0` shipped
@@ -24,11 +29,10 @@ was internally consistent, every signature was valid, and nothing noticed for
 months — the release simply contained the wrong software. `scripts/verify_release.py`
 now catches it, but it catches it *after* the build; catching it here is free.
 
-```powershell
-Select-String -Path clients\desktop\src-tauri\tauri.conf.json,clients\desktop\package.json -Pattern '"version"'
-```
-
-Both must agree, and must match the tag you are about to push.
+Every one must agree, and match the tag you are about to push. CI runs the
+check without a tag on every push, and `release.yml` runs it against the tag
+before building anything, so a missed file fails in seconds rather than after
+the build.
 
 ### 2. The gates CI runs anyway
 
