@@ -153,7 +153,7 @@ Until it is, verify what you downloaded — every release publishes
 `SHA256SUMS.txt` and signed build provenance:
 
 ```bash
-gh attestation verify Osprey_0.3.0_x64-setup.exe --repo ibuilder/osprey
+gh attestation verify Osprey_0.3.1_x64-setup.exe --repo ibuilder/osprey
 ```
 
 Updates *are* signed: an installed copy checks every update against a key
