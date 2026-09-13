@@ -31,9 +31,13 @@ updates:
     #     The user requested (constraint) pydantic-core==2.48.0
     #     ERROR: ResolutionImpossible
     #
-    # Dependabot has produced that unmergeable PR twice (#14, #30). pydantic-core
-    # moves when pydantic moves; ignoring it here does not skip the upgrade, it
-    # just stops the two being proposed separately.
+    # Dependabot has produced that unmergeable PR twice (#14, #30), so it is
+    # ignored. The cost runs the other way: pydantic-core then never moves at all,
+    # so a pydantic bump fails CI on install with the mirror-image error (#51,
+    # "pydantic 2.13.5 depends on pydantic-core==2.46.5"). When that happens, bump
+    # pydantic-core in constraints.txt to the version pydantic names, on the same
+    # PR. No ignore rule avoids both failures; this one fails loudly and is a
+    # one-line fix.
     ignore:
       - dependency-name: "pydantic-core"
     groups:
@@ -93,6 +97,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
+    # Patch-level image updates (3.12.x) are exactly what this entry is for. A new
+    # Python minor is not: CI tests 3.11-3.13 and constraints-prod.txt is resolved
+    # for the 3.12 image, so moving the image needs CI coverage and regenerated
+    # pins first (#45 proposed 3.14 and was closed). Raise this with that work.
+    ignore:
+      - dependency-name: "python"
+        versions: [">=3.13"]
     labels: ["dependencies", "docker", "security"]
 
   # Pin drift in the workflows themselves.
