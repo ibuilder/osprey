@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration: the frozen backend executable.
+
+  Paste this into the SignPath project as an artifact configuration with the slug
+  "backend" (release.yml refers to it by that slug). SignPath's editor validates
+  the schema on save; if it rejects anything here, trust the editor over this file
+  and update the file to match.
+
+  Only osprey-backend.exe is signed. The PyInstaller directory also contains
+  python3xx.dll and third-party .pyd/.dll files. Those are not Osprey's own
+  binaries, and SignPath Foundation only signs a project's own artifacts, so the
+  workflow uploads the executable alone.
+
+  product-name is a metadata restriction: SignPath refuses to sign a file whose
+  version resource does not say "Osprey". The PyInstaller spec embeds that resource.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="osprey-backend.exe" product-name="Osprey">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

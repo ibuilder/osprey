@@ -59,36 +59,96 @@ project with no legal entity behind it, that is an honest description.
 
 ## Applying (needs a human)
 
-Apply at <https://signpath.org/apply>. They ask for:
+Everything that can live in the repository is already here. What remains needs
+you, because it involves your accounts:
 
-- **Repository** — <https://github.com/ibuilder/osprey>
-- **Licence** — Apache-2.0 (see `LICENSE`)
-- **What the software does** — a self-hosted background agent that reads a
-  construction team's own email and project-management sources and produces a
-  prioritized, explainable hotlist of items needing attention.
-- **Build system** — GitHub Actions (`.github/workflows/release.yml`), building
-  a Tauri 2 desktop bundle with a PyInstaller-frozen Python backend.
-- **Reproducibility** — the release workflow builds from a tag with pinned
-  dependencies (`backend/constraints.txt`, `Cargo.lock`, `package-lock.json`).
+1. **Turn on MFA** for your GitHub account. SignPath Foundation requires it for
+   every team member, on GitHub and on SignPath.
+2. **Check the policy page is live** at
+   <https://ibuilder.github.io/osprey/code-signing-policy.html> (source:
+   `docs/code-signing-policy.html`, linked from the site's nav and footer). The
+   Foundation requires it to be reachable from the homepage.
+3. **Apply** at <https://signpath.org/apply>. Useful answers:
+   - **Repository** — <https://github.com/ibuilder/osprey>
+   - **Licence** — AGPL-3.0-only for the backend (`LICENSE`), Apache-2.0 for the
+     desktop client (`clients/desktop/package.json`). Both are OSI-approved and
+     neither is also sold under a commercial licence.
+   - **What the software does** — a self-hosted background agent that reads a
+     construction team's own email and project-management sources and produces a
+     prioritized, explainable hotlist of items needing attention.
+   - **Build system** — GitHub Actions (`.github/workflows/release.yml`), building
+     a Tauri 2 desktop bundle with a PyInstaller-frozen Python backend.
+   - **What gets signed** — the Windows NSIS and MSI installers, and the bundled
+     `osprey-backend.exe`. Only this project's own binaries.
+   - **Code signing policy** — the URL above.
 
-SignPath requires that signing happen in CI from an unmodified public build, not
-on a developer machine. The release workflow already meets that.
+The certificate is issued to SignPath Foundation, so signed installers show
+**SignPath Foundation** as the publisher, not a name of ours.
 
 ## Wiring it up once approved
 
-SignPath provides a GitHub Action that submits the built artifact for signing.
-It slots in **after** `tauri-action` produces the installer and **before** the
-release assets are uploaded — the installer must be signed, and the updater
-signature computed over the signed file, or the updater will reject it.
+The workflow side is already in `release.yml`, and **switched off** until two
+secrets exist. Until then releases build exactly as before.
 
-Two things to get right:
+### In SignPath
 
-1. **Sign before computing the updater signature.** Tauri's updater hashes the
-   artifact; signing changes the bytes.
-2. **The `.exe` inside the bundle also matters.** The frozen backend
-   (`osprey-backend.exe`) ships as a bundled resource. Signing only the
-   installer leaves an unsigned executable that antivirus can still flag, so
-   sign the backend before Tauri bundles it.
+1. Create a project (slug `osprey`, or set the repository variable
+   `SIGNPATH_PROJECT_SLUG` to whatever you choose).
+2. Link the predefined **GitHub.com** trusted build system to the project.
+3. Add two **artifact configurations**, pasting the files from the repository:
+   - slug `backend` — `.signpath/artifact-configurations/backend.xml`
+   - slug `installers` — `.signpath/artifact-configurations/installers.xml`
+
+   SignPath's editor validates the schema when you save. If it rejects anything,
+   trust the editor, and update the file in the repository to match.
+4. Create a **signing policy** (slug `release-signing`, or set
+   `SIGNPATH_SIGNING_POLICY_SLUG`) that requires **manual approval**, with you as
+   approver. The Foundation requires approval for every release.
+5. Create an API token for a user with **submitter** permission.
+
+### In GitHub
+
+Settings → Secrets and variables → Actions:
+
+| Name | Kind | Value |
+| --- | --- | --- |
+| `SIGNPATH_API_TOKEN` | secret | the submitter API token |
+| `SIGNPATH_ORGANIZATION_ID` | secret | your SignPath organization ID |
+| `SIGNPATH_PROJECT_SLUG` | variable | only if not `osprey` |
+| `SIGNPATH_SIGNING_POLICY_SLUG` | variable | only if not `release-signing` |
+
+```powershell
+gh secret set SIGNPATH_API_TOKEN            # prompts; does not echo
+gh secret set SIGNPATH_ORGANIZATION_ID
+```
+
+### What a release then does
+
+On a **tag** build, the Windows leg:
+
+1. freezes the backend and sends **only `osprey-backend.exe`** to SignPath, before
+   Tauri bundles it. The rest of the PyInstaller directory is third-party runtime,
+   which the Foundation does not sign for us. The spec embeds a version resource
+   (`ProductName` Osprey, version from `tauri.conf.json`) because the artifact
+   configuration enforces it;
+2. builds and uploads the installers to the draft as before;
+3. sends the NSIS and MSI installers to SignPath;
+4. recomputes each updater `.sig` over the **signed** bytes and replaces the
+   installer and `.sig` on the draft. This ordering is the part that must not
+   change: signing rewrites the installer, so a `.sig` computed before signing
+   makes every installed copy reject the update.
+
+Then `release-integrity`, which runs after every platform has finished, copies the
+published `.sig` values into `latest.json` (`scripts/sync_manifest_signatures.py`)
+before `scripts/verify_release.py` checks, among other things, that the manifest
+and the published signatures agree.
+
+**Each release needs two approvals in SignPath** — backend, then installers — and
+the Windows job waits up to two hours for each. Dry runs (`workflow_dispatch`) and
+`unsigned` builds never submit anything, so they never page the approver.
+
+SmartScreen warnings do not stop on the first signed release: its reputation for
+a certificate builds with download volume.
 
 ## macOS
 

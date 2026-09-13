@@ -17,7 +17,9 @@
 #
 # A directory build starts faster and looks like an ordinary application on disk.
 # UPX stays off for the same reason — packed sections read as obfuscation.
+import json
 import os
+import sys
 
 from PyInstaller.utils.hooks import collect_submodules
 
@@ -61,6 +63,57 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
+
+def _windows_version_info():
+    """A version resource for osprey-backend.exe, on Windows builds only.
+
+    SignPath Foundation requires signed binaries to carry metadata that the signing
+    policy enforces (the artifact configuration refuses a file whose ProductName is
+    not "Osprey"). A PyInstaller executable has no version resource unless the spec
+    supplies one. The version is read from tauri.conf.json so the backend and the
+    desktop app always report the same release.
+    """
+    if sys.platform != "win32":
+        return None
+    from PyInstaller.utils.win32.versioninfo import (
+        FixedFileInfo,
+        StringFileInfo,
+        StringStruct,
+        StringTable,
+        VarFileInfo,
+        VarStruct,
+        VSVersionInfo,
+    )
+
+    conf_path = os.path.join(BACKEND_DIR, "..", "clients", "desktop", "src-tauri", "tauri.conf.json")
+    with open(conf_path, encoding="utf-8") as fh:
+        version = json.load(fh)["version"]
+    numbers = [int(part) for part in version.split("-")[0].split(".")]
+    fixed = tuple((numbers + [0, 0, 0, 0])[:4])
+    return VSVersionInfo(
+        ffi=FixedFileInfo(filevers=fixed, prodvers=fixed),
+        kids=[
+            StringFileInfo(
+                [
+                    StringTable(
+                        "040904B0",
+                        [
+                            StringStruct("CompanyName", "Osprey contributors"),
+                            StringStruct("FileDescription", "Osprey backend"),
+                            StringStruct("FileVersion", version),
+                            StringStruct("InternalName", "osprey-backend"),
+                            StringStruct("LegalCopyright", "Copyright (C) 2026 Osprey contributors. AGPL-3.0-only."),
+                            StringStruct("OriginalFilename", "osprey-backend.exe"),
+                            StringStruct("ProductName", "Osprey"),
+                            StringStruct("ProductVersion", version),
+                        ],
+                    )
+                ]
+            ),
+            VarFileInfo([VarStruct("Translation", [1033, 1200])]),
+        ],
+    )
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -77,6 +130,7 @@ exe = EXE(
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
+    version=_windows_version_info(),
     entitlements_file=None,
 )
 

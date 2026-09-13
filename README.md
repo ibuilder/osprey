@@ -146,7 +146,8 @@ Windows `.exe`/`.msi`, macOS `.dmg` (Apple silicon and Intel), and Linux
 Nothing is code-signed yet, so the first launch takes an extra click: Windows
 SmartScreen needs *More info → Run anyway*, and macOS Gatekeeper needs
 right-click → *Open*. See [docs/code-signing.md](docs/code-signing.md) for where
-that stands.
+that stands, and the [code signing policy](https://ibuilder.github.io/osprey/code-signing-policy.html)
+for how signing is governed.
 
 Until it is, verify what you downloaded — every release publishes
 `SHA256SUMS.txt` and signed build provenance:

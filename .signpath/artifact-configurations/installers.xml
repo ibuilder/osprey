@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration: the Windows installers.
+
+  Paste this into the SignPath project as an artifact configuration with the slug
+  "installers" (release.yml refers to it by that slug). SignPath's editor validates
+  the schema on save; if it rejects anything here, trust the editor over this file
+  and update the file to match.
+
+  The workflow uploads the Tauri bundle directory, so the artifact contains
+  nsis/Osprey_<version>_x64-setup.exe and msi/Osprey_<version>_x64_en-US.msi.
+  Exactly one of each is expected; a build that produced none, or two, is wrong
+  and should not be signed.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="nsis/Osprey_*_x64-setup.exe" product-name="Osprey">
+      <authenticode-sign />
+    </pe-file>
+    <msi-file path="msi/Osprey_*_x64_*.msi">
+      <authenticode-sign />
+    </msi-file>
+  </zip-file>
+</artifact-configuration>
