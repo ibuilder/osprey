@@ -110,3 +110,30 @@ def test_the_app_refuses_to_start_on_a_fatal_misconfiguration(monkeypatch):
     with pytest.raises(ConfigurationError) as excinfo:
         asyncio.get_event_loop().run_until_complete(boot()) if False else asyncio.run(boot())
     assert "OSPREY_SECRET_KEY" in str(excinfo.value)
+
+
+def test_debug_is_off_unless_asked_for():
+    """A production boot must not need an explicit OSPREY_DEBUG=false.
+
+    It used to default on, so the Helm chart, the Docker image and docker-compose
+    -- none of which set it -- were all refused at boot. Found by the kind smoke
+    deploy crash-looping on "OSPREY_DEBUG is on in production".
+    """
+    assert Settings.model_fields["debug"].default is False
+
+
+def test_an_image_style_environment_boots(monkeypatch):
+    """The environment the Helm chart actually provides: prod, secrets, no DEBUG."""
+    monkeypatch.delenv("OSPREY_DEBUG", raising=False)
+    settings = Settings(
+        _env_file=None,
+        env="prod",
+        secret_key=GOOD_KEY,
+        encryption_key="real-encryption-key",
+        webhook_hmac_secret="real-hmac-secret",
+        database_url="postgresql+asyncpg://osprey_app:x@db:5432/osprey",
+        cors_allow_origins=["https://osprey.example.com"],
+        password_hash_iterations=390_000,
+    )
+    assert settings.debug is False
+    assert settings.assert_prod_secrets() == []

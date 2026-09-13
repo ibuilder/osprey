@@ -18,7 +18,11 @@ class Settings(BaseSettings):
 
     # ---- App ----------------------------------------------------------------
     env: Literal["dev", "test", "prod"] = "dev"
-    debug: bool = True
+    # Off unless asked for. Defaulting it on meant every production deploy that
+    # did not explicitly set OSPREY_DEBUG=false -- the Helm chart, the Docker
+    # image and docker-compose all -- was refused at boot by assert_prod_secrets.
+    # Development turns it on through .env (see .env.example).
+    debug: bool = False
     log_level: str = "INFO"
     app_name: str = "Osprey"
     public_base_url: str = ""  # external URL for webhook callbacks (subscriptions)
