@@ -25,6 +25,14 @@ deliver it however your organization already delivers things. That keeps SMTP
 credentials, bounce handling, and deliverability out of a self-hosted product
 that would otherwise have to own all three.
 
+**In the desktop app** an admin or owner does all of this from the **admin**
+tab: invite (the code is shown once, with a copy button), change roles,
+deactivate or remove members, mint and revoke SCIM tokens, and set retention.
+The recipient chooses **Have an invite code?** on the sign-in screen. Every
+user can see and sign out their own sessions, or change their password, from
+the **account** tab. The `curl` equivalents below are for scripting and for
+deployments without the desktop client.
+
 ```bash
 curl -X POST https://osprey.example.com/orgs/current/invites \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
@@ -155,7 +163,8 @@ OSPREY_OIDC_ALLOWED_EMAIL_DOMAINS='["example.com","example.co.uk"]'
 
 ## 3. SCIM 2.0 provisioning
 
-Turn it on and mint a token per IdP connector:
+Turn it on and mint a token per IdP connector (or use **admin → SCIM
+provisioning** in the desktop app):
 
 ```bash
 OSPREY_SCIM_ENABLED=true
