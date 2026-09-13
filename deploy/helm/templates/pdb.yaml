@@ -1,0 +1,18 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $desired := ternary (int .Values.autoscaling.minReplicas) (int .Values.replicaCount.api) .Values.autoscaling.enabled }}
+{{- if lt $desired 2 }}
+{{- fail (printf "podDisruptionBudget.enabled requires at least 2 API replicas (found %d). A PDB of minAvailable=%v over a single replica blocks every node drain indefinitely." $desired .Values.podDisruptionBudget.minAvailable) }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "osprey.fullname" . }}-api
+  labels: {{- include "osprey.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "osprey.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+{{- end }}

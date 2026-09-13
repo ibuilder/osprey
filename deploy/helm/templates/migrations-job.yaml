@@ -15,14 +15,22 @@ spec:
       labels: {{- include "osprey.labels" . | nindent 8 }}
     spec:
       restartPolicy: Never
+      serviceAccountName: {{ .Values.serviceAccount.name | default (include "osprey.fullname" .) }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes: {{- include "osprey.tmpVolume" . | nindent 8 }}
       containers:
         - name: migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           command: ["alembic", "upgrade", "head"]
+          # The migration job holds the most privileged database credential in the
+          # deployment, so it gets the same container hardening as everything else.
+          securityContext: {{- include "osprey.containerSecurityContext" . | nindent 12 }}
           # Runs as the schema OWNER: migrations issue DDL, which the ordinary
           # runtime role deliberately cannot do.
           env:
             {{- include "osprey.env" . | nindent 12 }}
             {{- include "osprey.migrationDbEnv" . | nindent 12 }}
+          volumeMounts: {{- include "osprey.tmpMount" . | nindent 12 }}
+          resources: {{- toYaml .Values.resources.api | nindent 12 }}
 {{- end }}

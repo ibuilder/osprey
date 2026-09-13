@@ -1,0 +1,33 @@
+{{- if .Values.serviceMonitor.enabled }}
+{{/*
+Requires the Prometheus Operator CRDs. Guarded by a value rather than a
+`.Capabilities.APIVersions.Has` check so that `helm template` (which has no
+cluster to ask) renders it deterministically in CI.
+*/}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "osprey.fullname" . }}
+  labels:
+    {{- include "osprey.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "osprey.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+      {{- if .Values.secrets.metricsToken }}
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ include "osprey.fullname" . }}
+          key: metricsToken
+      {{- end }}
+{{- end }}
