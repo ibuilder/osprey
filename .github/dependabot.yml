@@ -38,8 +38,13 @@ updates:
     # pydantic-core in constraints.txt to the version pydantic names, on the same
     # PR. No ignore rule avoids both failures; this one fails loudly and is a
     # one-line fix.
+    #
+    # redis is capped by arq (0.28.0 requires redis<6), so a major bump of it can
+    # only be jointly unresolvable (#57 proposed 8.1.0). Lift this when arq does.
     ignore:
       - dependency-name: "pydantic-core"
+      - dependency-name: "redis"
+        versions: [">=6"]
     groups:
       backend-minor-patch:
         patterns: ["*"]
@@ -59,6 +64,10 @@ updates:
       # coherent PR instead of four mutually incompatible ones.
       react:
         patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      # Same failure shape: @vitest/coverage-v8 peers on the exact vitest version,
+      # so separate majors (#54, #55) each fail `npm ci` with ERESOLVE.
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
       frontend-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
