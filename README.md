@@ -92,7 +92,7 @@ cd backend && python -m osprey.seed
 | **Mobile viewer** (iOS/Android) | scaffold only |
 | Tests: **453 backend** (~89% cov; connector poll-loops and the connector contract for every built-in, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation, push senders, AI providers) + **78 desktop tests** (incl. admin, account, health, alert, connection opt-in and data/deletion behaviour) | ✅ |
 | docker-compose + **Helm chart** (api · worker · migrations · ingress · HPA · PDB · NetworkPolicy · ServiceMonitor) | ✅ |
-| CI (11 blocking checks): Python **3.11/3.12/3.13/3.14** · ruff lint+format · mypy · coverage gate · **connector SDK template installed as a plugin and tested** · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · actionlint · SBOM · pip-audit / npm-audit / Trivy | ✅ |
+| CI (12 checks): Python **3.11/3.12/3.13/3.14** · ruff lint+format · mypy · coverage gate · **connector SDK template installed as a plugin and tested** · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Playwright end-to-end** (the desktop UI in Chromium against a real backend) · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · actionlint · SBOM · pip-audit / npm-audit / Trivy | ✅ |
 
 ## Run it
 
