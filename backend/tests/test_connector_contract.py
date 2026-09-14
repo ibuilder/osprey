@@ -78,7 +78,8 @@ WEBHOOK_SAMPLES: dict[str, list[dict]] = {
 
 
 @pytest.mark.parametrize(
-    "source_type", ["argus", "filedrop", "outlook", "procore", "gmail", "gcal", "pyscript", "ai"]
+    "source_type",
+    ["acc", "argus", "filedrop", "outlook", "procore", "gmail", "gcal", "pyscript", "ai"],
 )
 async def test_builtin_connector_honours_the_contract(source_type):
     connector_cls = type(registry.get(source_type))
@@ -90,7 +91,7 @@ async def test_builtin_connector_honours_the_contract(source_type):
 def test_every_registered_builtin_is_covered_above():
     # A new built-in must be added to the parametrize list, with a sample payload
     # if it takes webhooks; this fails until it is.
-    covered = {"argus", "filedrop", "outlook", "procore", "gmail", "gcal", "pyscript", "ai"}
+    covered = {"acc", "argus", "filedrop", "outlook", "procore", "gmail", "gcal", "pyscript", "ai"}
     builtin = {
         t
         for t in registry.types()

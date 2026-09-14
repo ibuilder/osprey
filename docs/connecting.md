@@ -58,6 +58,27 @@ the *application's* identity, not any user's — set once by an admin.
    OSPREY_PROCORE_CLIENT_SECRET=...
    ```
 
+## Autodesk Construction Cloud (ACC Issues)
+
+1. [APS Developer Portal](https://aps.autodesk.com/myapps) → create an app with the
+   **Autodesk Construction Cloud API** enabled. Choose a **Desktop, Mobile,
+   Single-Page App** type: Osprey uses authorization code with PKCE.
+2. Callback URL: `http://127.0.0.1` (loopback).
+3. An ACC **account admin** must add the app's client id under
+   *Account Admin → Custom Integrations*, or every request is refused.
+4. Set:
+   ```
+   OSPREY_ACC_CLIENT_ID=...
+   OSPREY_ACC_CLIENT_SECRET=...      # optional for a PKCE public client
+   ```
+5. Connect from the desktop app, and set the connection's account to the **ACC
+   project id** (with or without the `b.` prefix).
+
+Osprey reads the project's issues with the read-only `data:read` scope. Drafts,
+closed and void issues are skipped. It polls: ACC webhooks are not wired up yet. An
+issue's assignee is an Autodesk user id, so hotlist items show the issue's title and
+description rather than a name Osprey would have to guess.
+
 ## File-Drop / Forward-To (no OAuth)
 
 For any source without an API, forward email to Osprey or drop a CSV export — it

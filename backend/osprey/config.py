@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     procore_client_id: str = ""
     procore_client_secret: str = ""
     procore_base_url: str = "https://api.procore.com"
+    # Autodesk Construction Cloud, through an Autodesk Platform Services app.
+    acc_client_id: str = ""
+    acc_client_secret: str = ""
+    acc_base_url: str = "https://developer.api.autodesk.com"
     webhook_hmac_secret: str = "dev-only-insecure-change-me"
 
     # Poller pacing. Providers meter per OAuth app, so these are process-wide per

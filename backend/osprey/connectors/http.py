@@ -37,6 +37,8 @@ RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 _RATE_OVERRIDES: dict[str, float] = {
     # Procore meters per client_id on a rolling minute; stay well inside it.
     "procore": 3.0,
+    # Autodesk Platform Services allows 500 calls a minute (~8/s) per app.
+    "acc": 5.0,
 }
 
 _limiters: dict[str, RateLimiter] = {}
