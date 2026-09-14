@@ -82,15 +82,15 @@ cd backend && python -m osprey.seed
 | **Enterprise identity**: OIDC **SSO** (PKCE + JWKS, with a Sign in with SSO button in the desktop app) · **SCIM 2.0** provisioning · invites · member management | ✅ |
 | **Revocable sessions**: rotating refresh tokens with reuse detection, logout-everywhere, per-device revocation | ✅ |
 | **API hardening**: security headers · per-caller + credential rate limits · account lockout · body caps · request ids | ✅ |
-| **Data governance**: per-tenant retention, subject-access export, right-to-delete | ✅ |
+| **Data governance**: per-tenant retention, subject-access export, right-to-delete (inline, or queued and drained in batches by the worker for large tenants) | ✅ |
 | **Ops**: Prometheus `/metrics` · `/live` `/ready` `/health` probes · fail-fast prod config validation | ✅ |
 | REST + webhook + **WebSocket (live hotlist)** API (FastAPI) | ✅ |
 | Background workers (ARQ: poll · ingest · score · run-scripts · notify) | ✅ |
 | **Push**: device registration + APNs/FCM/Web-Push sender abstraction | ✅ |
 | Admin console (connection health · audit verify · tenant-isolation check · stats), with a **Health** view in the desktop app | ✅ |
-| **Tauri 2.0 desktop client** (tray · live hotlist · connect · AI · scripts · admin and account screens) with **OS notifications for new critical items**, close-to-tray, and start at login | ✅ |
+| **Tauri 2.0 desktop client** (tray · live hotlist · connect · AI · scripts · admin and account screens, including data export and organization deletion for owners) with **OS notifications for new critical items**, close-to-tray, and start at login | ✅ |
 | **Mobile viewer** (iOS/Android) | scaffold only |
-| Tests: **444 backend** (~89% cov; connector poll-loops and the connector contract for every built-in, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation, push senders, AI providers) + **74 desktop tests** (incl. admin, account, health, alert and connection opt-in behaviour) | ✅ |
+| Tests: **453 backend** (~89% cov; connector poll-loops and the connector contract for every built-in, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation, push senders, AI providers) + **78 desktop tests** (incl. admin, account, health, alert, connection opt-in and data/deletion behaviour) | ✅ |
 | docker-compose + **Helm chart** (api · worker · migrations · ingress · HPA · PDB · NetworkPolicy · ServiceMonitor) | ✅ |
 | CI (11 blocking checks): Python **3.11/3.12/3.13/3.14** · ruff lint+format · mypy · coverage gate · **connector SDK template installed as a plugin and tested** · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · actionlint · SBOM · pip-audit / npm-audit / Trivy | ✅ |
 
