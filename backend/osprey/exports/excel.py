@@ -14,6 +14,7 @@ from .common import (
     BUCKET_HEX,
     BUCKET_LABEL,
     BUCKET_ORDER,
+    format_due,
     format_money,
     score_parts,
     source_label,
@@ -132,7 +133,7 @@ def hotlist_to_xlsx(
             item.get("category", ""),
             item.get("why", ""),
             item.get("owner") or "",
-            item.get("due") or "",
+            "" if item.get("due") in (None, "") else format_due(item.get("due")),
             None,  # $ Exposure filled below so 0 ≠ blank
             item.get("recommended_action", ""),
             item.get("score", 0),

@@ -25,6 +25,7 @@ from .common import (
     BUCKET_LABEL,
     BUCKET_ORDER,
     esc_xml,
+    format_due,
     format_money,
     items_by_bucket,
     score_breakdown_text,
@@ -112,7 +113,7 @@ def _section_table(
             [
                 Paragraph(str(rank), st["cell"]),
                 _item_what_cell(item, st),
-                Paragraph(esc_xml(str(item.get("due") or "—")), st["cellsm"]),
+                Paragraph(esc_xml(format_due(item.get("due"))), st["cellsm"]),
                 Paragraph(format_money(item.get("dollar_exposure")), st["cellsm"]),
                 Paragraph(esc_xml(item.get("recommended_action", "")), st["cellsm"]),
                 Paragraph(f"{float(item.get('score', 0) or 0):.0f}", st["cell"]),

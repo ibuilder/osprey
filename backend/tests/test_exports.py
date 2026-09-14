@@ -7,7 +7,7 @@ import io
 from openpyxl import load_workbook
 
 from osprey.exports import format_money, hotlist_to_pdf, hotlist_to_xlsx, sanitize_export_filename
-from osprey.exports.common import esc_xml, score_breakdown_text
+from osprey.exports.common import esc_xml, format_due, score_breakdown_text
 
 PAYLOAD = {
     "project_id": "p1",
@@ -69,7 +69,7 @@ PAYLOAD = {
             "summary": "s3",
             "sources": [{"source_type": "email", "title": "FYI", "url": None}],
             "owner": "Superintendent",
-            "due": "2026-08-01",
+            "due": "2026-08-01T00:00:00+00:00",
             "dollar_exposure": None,
             "recommended_action": "Keep an eye on it.",
             "notice_deadline": False,
@@ -85,6 +85,12 @@ def test_format_money_distinguishes_zero_from_missing():
     assert format_money(0.0) == "$0"
     assert format_money(None) == "—"
     assert format_money(180000) == "$180,000"
+
+
+def test_format_due_collapses_iso_datetimes():
+    assert format_due(None) == "—"
+    assert format_due("2026-07-29") == "2026-07-29"
+    assert format_due("2026-09-20T00:00:00+00:00") == "2026-09-20"
 
 
 def test_sanitize_export_filename_strips_unsafe_chars():
@@ -129,6 +135,8 @@ def test_xlsx_export_is_valid_workbook():
     assert hs.cell(row=3, column=9).value == 0
     # Missing exposure stays blank in the currency column.
     assert hs.cell(row=4, column=9).value is None
+    # ISO due timestamps collapse to the calendar date for readability.
+    assert hs.cell(row=4, column=8).value == "2026-08-01"
 
     raw = wb["Raw"]
     assert raw.cell(row=3, column=2).value == "$0"

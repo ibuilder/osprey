@@ -45,6 +45,16 @@ def format_money(value: Any) -> str:
         return "—"
 
 
+def format_due(value: Any) -> str:
+    """Display a due/deadline value. ISO datetimes collapse to the calendar date."""
+    if value is None or value == "":
+        return "—"
+    text = str(value).strip()
+    if "T" in text:
+        return text.split("T", 1)[0]
+    return text
+
+
 def score_parts(factors: dict[str, Any] | None) -> tuple[float | None, float | None, float | None]:
     """Return (urgency, impact, confidence) from an item's factors dict."""
     if not factors:
