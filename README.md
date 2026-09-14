@@ -88,9 +88,9 @@ cd backend && python -m osprey.seed
 | **Push**: device registration + APNs/FCM/Web-Push sender abstraction | ✅ |
 | Admin console (connection health · audit verify · stats · feature flags) | ✅ |
 | **Tauri 2.0 desktop client** (tray · live hotlist · connect · AI · scripts) + **mobile viewer** scaffold | ✅ |
-| Tests: **324 backend** (~86% cov; connector poll-loops, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation) + **31 desktop tests** | ✅ |
+| Tests: **360 backend** (~89% cov; connector poll-loops, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation, push senders, AI providers) + **56 desktop tests** (incl. admin and account screens) | ✅ |
 | docker-compose + **Helm chart** (api · worker · migrations · ingress · HPA · PDB · NetworkPolicy · ServiceMonitor) | ✅ |
-| CI (9 blocking jobs): Python **3.11/3.12/3.13** · ruff lint+format · mypy · coverage gate · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · SBOM · pip-audit / npm-audit / Trivy | ✅ |
+| CI (9 blocking jobs): Python **3.11/3.12/3.13/3.14** · ruff lint+format · mypy · coverage gate · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · SBOM · pip-audit / npm-audit / Trivy | ✅ |
 
 ## Run it
 

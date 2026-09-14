@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12", "3.13"]
+        python: ["3.11", "3.12", "3.13", "3.14"]
     defaults:
       run:
         working-directory: backend
@@ -54,6 +54,13 @@ jobs:
         # awaited the database, not how well it was tested; 82 is the honest
         # baseline with a couple of points of headroom.
         run: pytest -q --cov=osprey --cov-report=term-missing --cov-report=xml --cov-fail-under=82
+
+      # The image runs 3.12 today. Before it can move, the production pins must
+      # resolve on the newer interpreter too; this leg answers that on every PR, so
+      # the image bump is a one-line change once it is green (see dependabot.yml).
+      - name: Production constraints resolve on the newest Python
+        if: matrix.python == '3.14'
+        run: python tools/regen_constraints.py --check
 
       - name: Upload coverage
         if: matrix.python == '3.12'
