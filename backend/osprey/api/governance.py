@@ -40,7 +40,7 @@ from ..schemas import (
 )
 from ..security import audit
 from ..security.auth import Principal
-from .deps import current_principal, db_session, require_role
+from .deps import db_session, principal_during_deletion, require_role
 
 log = logging.getLogger("osprey.governance")
 
@@ -246,17 +246,21 @@ async def _rows(session: AsyncSession, statement) -> list[dict[str, Any]]:
 @router.post("/delete", response_model=DeletionStatus)
 async def delete_org(
     body: DeletionRequest,
+    response: Response,
     principal: Principal = Depends(require_role(Role.owner)),
     session: AsyncSession = Depends(db_session),
 ) -> DeletionStatus:
     """Erase this tenant and everything in it. There is no undo.
 
-    Deletion runs inline rather than as a queued job: it is one transaction, so
-    a failure rolls back cleanly, and a self-hosted deployment cannot be assumed
-    to have a worker running at all. The ``deletion_requested_at`` flag exists so
-    that a very large tenant which does need to be drained asynchronously has a
-    state to sit in -- every authenticated request is refused with 423 while it
-    is set.
+    By default deletion runs inline rather than as a queued job: it is one
+    transaction, so a failure rolls back cleanly, and a self-hosted deployment
+    cannot be assumed to have a worker running at all.
+
+    A tenant larger than ``erasure_inline_max_rows`` is instead queued: the
+    ``deletion_requested_at`` flag is committed, the call returns 202, and the
+    worker drains the tenant in bounded batches. While the flag is set every
+    authenticated request is refused with 423, and pollers and webhooks ignore
+    the tenant, so nothing new arrives while it is being removed.
     """
     org = await session.get(Org, principal.org_id)
     if org is None:  # pragma: no cover
@@ -268,9 +272,27 @@ async def delete_org(
         )
 
     org_id, org_name = org.id, org.name
-    org.deletion_requested_at = utcnow()
+    requested_at = utcnow()
+    org.deletion_requested_at = requested_at
     session.add(org)
     await session.flush()
+
+    limit = settings.erasure_inline_max_rows
+    if limit > 0:
+        rows = await retention.count_org_rows(session, org_id)
+        if rows > limit:
+            log.warning(
+                "erasure queued for org %s (%s) by %s: %d rows exceeds the inline limit of %d",
+                org_id,
+                org_name,
+                principal.email,
+                rows,
+                limit,
+            )
+            response.status_code = status.HTTP_202_ACCEPTED
+            return DeletionStatus(
+                org_id=org_id, requested_at=requested_at.isoformat(), completed=False
+            )
 
     log.warning("erasure requested for org %s (%s) by %s", org_id, org_name, principal.email)
     removed = await retention.erase_org(session, org_id)
@@ -284,7 +306,7 @@ async def delete_org(
 
 @router.get("/deletion-status", response_model=DeletionStatus)
 async def deletion_status(
-    principal: Principal = Depends(current_principal),
+    principal: Principal = Depends(principal_during_deletion),
     session: AsyncSession = Depends(db_session),
 ) -> DeletionStatus:
     org = await session.get(Org, principal.org_id)

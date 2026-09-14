@@ -40,6 +40,27 @@ async def current_principal(
     authorization: str = Header(default=""),
     session: AsyncSession = Depends(db_session),
 ) -> Principal:
+    """The authenticated caller, refused with 423 while their org is being erased."""
+    principal = await _verified_principal(authorization, session)
+    org = await session.get(Org, principal.org_id)
+    if org is not None and org.deletion_requested_at is not None:
+        raise HTTPException(status.HTTP_423_LOCKED, "this organization is scheduled for deletion")
+    return principal
+
+
+async def principal_during_deletion(
+    authorization: str = Header(default=""),
+    session: AsyncSession = Depends(db_session),
+) -> Principal:
+    """Like :func:`current_principal`, but still answers while the org is erased.
+
+    Only for reporting deletion progress: a queued erasure can take several worker
+    runs, and the owner who asked for it should be able to watch it finish.
+    """
+    return await _verified_principal(authorization, session)
+
+
+async def _verified_principal(authorization: str, session: AsyncSession) -> Principal:
     """Verify the bearer token and confirm it has not been revoked.
 
     Signature validity is not sufficient. A token stays cryptographically sound
@@ -62,10 +83,6 @@ async def current_principal(
         raise _unauthorized("account is disabled")
     if user.token_version != principal.token_version:
         raise _unauthorized("token has been revoked; sign in again")
-
-    org = await session.get(Org, principal.org_id)
-    if org is not None and org.deletion_requested_at is not None:
-        raise HTTPException(status.HTTP_423_LOCKED, "this organization is scheduled for deletion")
     return principal
 
 

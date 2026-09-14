@@ -250,6 +250,21 @@ devices, scripts, invites, sessions, and audit log. Users are removed only if
 this was their last membership. **There is no undo and no soft-delete tier.**
 Take a backup first; the API will not do it for you.
 
+By default the erasure runs inline, in one transaction, and needs no worker. For a
+very large tenant that transaction can hold locks on the busiest tables for a long
+time, so set `OSPREY_ERASURE_INLINE_MAX_ROWS` (signals + items + scores + audit
+records) to queue anything bigger:
+
+- the call returns **202** instead of 200, and the tenant is locked at once: every
+  authenticated request gets 423, and polling, subscription renewal, scheduled
+  scripts and webhooks all ignore it, so nothing new arrives;
+- the worker removes up to `OSPREY_ERASURE_BATCH_ROWS` (default 5000) rows per
+  tenant per minute, each batch its own transaction, then erases the remainder;
+- `GET /orgs/current/deletion-status` keeps answering the owner while it drains.
+
+Queued erasure needs the worker running. Without one a queued tenant stays locked
+and undeleted, so leave the setting at `0` on a deployment with no worker.
+
 ### Subject access
 
 `GET /orgs/current/export` returns the tenant's full contents as JSON. Connector

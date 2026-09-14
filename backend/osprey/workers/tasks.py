@@ -10,11 +10,13 @@ import logging
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
+from ..config import settings
 from ..connectors.service import get_connector, sync_subscription, to_view
 from ..engine.hotlist import build_hotlist, run_pipeline
 from ..engine.ingest import ingest_events
-from ..models import Connection, ConnectionStatus, utcnow
+from ..models import Connection, ConnectionStatus, Org, utcnow
 
 log = logging.getLogger("osprey.worker")
 
@@ -66,11 +68,21 @@ async def refresh_project_task(session: AsyncSession, project_id: str) -> dict:
     }
 
 
+def _live_tenant_connections():
+    """Connections whose org is not being erased: a queued erasure must not keep
+    taking in data while the worker removes it."""
+    return (
+        select(Connection)
+        .join(Org, col(Org.id) == col(Connection.org_id))
+        .where(col(Org.deletion_requested_at).is_(None))
+    )
+
+
 async def poll_all_active(session: AsyncSession) -> dict:
     rows = (
         (
             await session.execute(
-                select(Connection).where(Connection.status != ConnectionStatus.revoked)
+                _live_tenant_connections().where(Connection.status != ConnectionStatus.revoked)
             )
         )
         .scalars()
@@ -95,7 +107,7 @@ async def renew_subscriptions(session: AsyncSession, *, notify_base: str = "") -
     rows = (
         (
             await session.execute(
-                select(Connection).where(Connection.status == ConnectionStatus.active)
+                _live_tenant_connections().where(Connection.status == ConnectionStatus.active)
             )
         )
         .scalars()
@@ -125,3 +137,24 @@ async def purge_retention(session: AsyncSession) -> dict:
 
     removed = await purge_expired(session)
     return {"purged": {k: v for k, v in removed.items() if v}}
+
+
+async def drain_erasures(session: AsyncSession) -> dict:
+    """Advance every queued tenant erasure by one bounded batch.
+
+    Each run is its own transaction (the ARQ wrapper commits it), so a tenant too
+    large to erase inline is removed over several runs rather than in one
+    transaction holding locks on the busiest tables.
+    """
+    from ..engine.retention import drain_org
+
+    org_ids = (
+        (await session.execute(select(Org.id).where(col(Org.deletion_requested_at).is_not(None))))
+        .scalars()
+        .all()
+    )
+    finished = 0
+    for org_id in org_ids:
+        _, done = await drain_org(session, org_id, batch_rows=settings.erasure_batch_rows)
+        finished += int(done)
+    return {"queued": len(org_ids), "finished": finished}

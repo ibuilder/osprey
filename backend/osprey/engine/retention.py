@@ -303,6 +303,70 @@ async def erase_org(session: AsyncSession, org_id: str) -> dict[str, int]:
     return {k: v for k, v in removed.items() if v}
 
 
+async def count_org_rows(session: AsyncSession, org_id: str) -> int:
+    """The tenant's bulk rows: the tables that grow with use, and so decide how
+    long an erasure takes. Everything else is small per tenant."""
+    total = await _count(
+        session, select(func.count()).select_from(AuditLog).where(AuditLog.org_id == org_id)
+    )
+    project_ids = await _project_ids(session, org_id)
+    if project_ids:
+        items = select(Item.id).where(Item.project_id.in_(project_ids))
+        for statement in (
+            select(func.count()).select_from(Signal).where(Signal.project_id.in_(project_ids)),
+            select(func.count()).select_from(Item).where(Item.project_id.in_(project_ids)),
+            select(func.count()).select_from(Score).where(Score.item_id.in_(items)),
+        ):
+            total += await _count(session, statement)
+    return total
+
+
+async def drain_org(
+    session: AsyncSession, org_id: str, *, batch_rows: int
+) -> tuple[dict[str, int], bool]:
+    """Remove up to ``batch_rows`` of a queued tenant's bulk rows.
+
+    Returns what was removed and whether the tenant is now gone. Tables are
+    drained one at a time, children before parents, and a table is only left once
+    it is empty -- so by the time items are deleted nothing still references them.
+    When every bulk table is empty the remainder is small, and ``erase_org``
+    finishes it in the same call.
+    """
+    budget = max(1, batch_rows)
+    removed: dict[str, int] = {}
+    project_ids = await _project_ids(session, org_id)
+    steps: list[tuple[str, type, object]] = []
+    if project_ids:
+        items = select(Item.id).where(Item.project_id.in_(project_ids))
+        steps += [
+            ("scores", Score, select(Score.id).where(Score.item_id.in_(items))),
+            ("actions", Action, select(Action.id).where(Action.item_id.in_(items))),
+            ("signals", Signal, select(Signal.id).where(Signal.project_id.in_(project_ids))),
+            (
+                "snapshots",
+                HotlistSnapshot,
+                select(HotlistSnapshot.id).where(HotlistSnapshot.project_id.in_(project_ids)),
+            ),
+            ("items", Item, items),
+        ]
+    steps.append(("audit", AuditLog, select(AuditLog.id).where(AuditLog.org_id == org_id)))
+
+    for name, model, ids_query in steps:
+        ids = list((await session.execute(ids_query.limit(budget))).scalars().all())  # type: ignore[attr-defined]
+        if not ids:
+            continue
+        removed[name] = await _delete(session, delete(model).where(model.id.in_(ids)))  # type: ignore[attr-defined]
+        budget -= len(ids)
+        if budget <= 0:
+            # This table may still hold rows; the next run carries on from it.
+            log.info("erasure of org %s continuing: removed %s", org_id, removed)
+            return removed, False
+
+    for table, count in (await erase_org(session, org_id)).items():
+        removed[table] = removed.get(table, 0) + count
+    return removed, True
+
+
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #

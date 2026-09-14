@@ -6,11 +6,12 @@ import logging
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import col
 
 from ..config import settings
 from ..engine.emit import emit_events
 from ..engine.hotlist import build_hotlist, run_pipeline
-from ..models import Project, ScriptStatus, ScriptTask, utcnow
+from ..models import Org, Project, ScriptStatus, ScriptTask, utcnow
 from .runner import run_source
 
 log = logging.getLogger("osprey.scripts")
@@ -68,7 +69,14 @@ async def run_due_scripts(session: AsyncSession) -> dict:
     tasks = (
         (
             await session.execute(
-                select(ScriptTask).where(ScriptTask.enabled, ScriptTask.schedule_minutes > 0)
+                select(ScriptTask)
+                .join(Org, col(Org.id) == col(ScriptTask.org_id))
+                .where(
+                    ScriptTask.enabled,
+                    ScriptTask.schedule_minutes > 0,
+                    # A tenant queued for erasure must not keep emitting signals.
+                    col(Org.deletion_requested_at).is_(None),
+                )
             )
         )
         .scalars()

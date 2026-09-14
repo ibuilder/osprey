@@ -50,6 +50,11 @@ async def purge_retention(ctx: dict) -> dict:
         return await tasks.purge_retention(session)
 
 
+async def drain_erasures(ctx: dict) -> dict:
+    async with session_scope() as session:
+        return await tasks.drain_erasures(session)
+
+
 async def startup(ctx: dict) -> None:
     configure_logging(settings.log_level)
     log.info("Osprey worker online (redis=%s)", settings.redis_url)
@@ -63,6 +68,7 @@ class WorkerSettings:
         run_scripts,
         renew_subscriptions,
         purge_retention,
+        drain_erasures,
     ]
     on_startup = startup
     # Poll every source every 5 min (webhooks add near-real-time on top); run due
@@ -73,5 +79,7 @@ class WorkerSettings:
         cron(renew_subscriptions, minute={7}),
         # Retention deletes rows; run it once, off-peak, not on every worker tick.
         cron(purge_retention, hour={3}, minute={17}),
+        # One bounded batch per queued erasure per minute; a no-op select otherwise.
+        cron(drain_erasures, minute=set(range(0, 60))),
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

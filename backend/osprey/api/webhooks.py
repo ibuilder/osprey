@@ -19,7 +19,7 @@ from ..connectors.service import (
     to_view,
 )
 from ..engine.ingest import ingest_events
-from ..models import Connection
+from ..models import Connection, Org
 from .deps import db_session
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -67,6 +67,11 @@ async def _load(source_type: str, connection_id: str | None, session: AsyncSessi
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "connection_id is required")
     connection = await session.get(Connection, connection_id)
     if connection is None or connection.source_type != source_type:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "connection not found for source_type")
+    org = await session.get(Org, connection.org_id)
+    if org is None or org.deletion_requested_at is not None:
+        # A tenant being erased takes in nothing new. Answer exactly as for a
+        # connection that is already gone, which is what it is about to be.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "connection not found for source_type")
     return connection
 
