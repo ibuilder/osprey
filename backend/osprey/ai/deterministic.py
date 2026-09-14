@@ -18,13 +18,20 @@ from .base import Citation, Extraction, ExtractionInput, LLMProvider
 _NOTICE_CUES = re.compile(
     r"\b(notice of (delay|claim|change)|reservation of rights|time[- ]?bar(red)?|"
     r"pursuant to (section|article|clause)|within \d+ (calendar |working |business )?days|"
-    r"failure to (notify|respond)|deemed (approved|waived)|cure period)\b",
+    r"failure to (notify|respond)|deemed (approved|waived)|cure period|"
+    # Lease options (Argus exports, leases): miss the notice and the option is gone.
+    r"option notice|notice deadline|notice to (renew|terminate|exercise|extend)|"
+    r"(renewal|termination|extension|expansion) option)\b",
     re.I,
 )
 _CATEGORY_RULES: list[tuple[Category, re.Pattern[str]]] = [
     (
         Category.contractual_notice,
-        re.compile(r"\b(notice of|claim|reservation of rights|time[- ]?bar)\b", re.I),
+        re.compile(
+            r"\b(notice of|claim|reservation of rights|time[- ]?bar|option notice|"
+            r"notice deadline)\b",
+            re.I,
+        ),
     ),
     (
         Category.safety,

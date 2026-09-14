@@ -64,6 +64,35 @@ For any source without an API, forward email to Osprey or drop a CSV export — 
 still lands on the hotlist. This is the universal fallback and needs no setup beyond
 creating a `filedrop` connection.
 
+## Argus Enterprise (export, no API)
+
+Argus Enterprise has no generally available API, so Osprey reads its exports.
+
+1. In Argus, export a **tenancy schedule** or **lease expiry** report as CSV.
+2. Create an `argus` connection once: `POST /connections` with
+   `{"project_id": "...", "source_type": "argus"}`.
+3. Send each export to it: `POST /connections/{id}/forward` with
+   `{"kind": "csv", "raw": "<the CSV text>"}`. Re-sending the same export ingests
+   nothing twice.
+
+Each lease becomes one hotlist item, built from:
+
+- **the option notice deadline**, for each renewal, termination, extension or
+  expansion option. It is scored as a contractual notice, the highest weight Osprey
+  has, because a missed option notice forfeits the option. If the export has a notice
+  *period* rather than a date, the deadline is computed back from the lease end
+  (months by default; days when the column or value says so);
+- **the lease expiration.**
+
+Annual rent is the dollar exposure. Vacant rows are skipped.
+
+Report layouts differ by Argus template, so columns are matched by name, ignoring
+case and punctuation. It needs a tenant column and a lease-end or notice-date
+column. The recognized spellings are in `COLUMN_ALIASES` in
+`backend/osprey/connectors/argus/__init__.py`: add yours there if a template uses
+another. An option with no notice date and no notice period is never guessed at; its
+expiration item says to check the lease.
+
 ## Verifying
 
 The connector network paths (token acquisition, delta pagination, list+get,
