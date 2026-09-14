@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import io
+from datetime import date
 
 from openpyxl import load_workbook
 
 from osprey.exports import format_money, hotlist_to_pdf, hotlist_to_xlsx, sanitize_export_filename
-from osprey.exports.common import esc_xml, format_due, score_breakdown_text
+from osprey.exports.common import (
+    critical_items,
+    esc_xml,
+    format_due,
+    is_overdue,
+    score_breakdown_text,
+)
 
 PAYLOAD = {
     "project_id": "p1",
@@ -29,11 +36,11 @@ PAYLOAD = {
             "bucket": "act_today",
             "bucket_label": "Act today",
             "bucket_emoji": "🔴",
-            "why": "Act today: contractual notice deadline; deadline 2026-07-29.",
+            "why": "Act today: contractual notice deadline; deadline 2026-07-20.",
             "summary": "s",
             "sources": [{"source_type": "filedrop", "title": "Notice", "url": "https://x/1"}],
             "owner": "PM",
-            "due": "2026-07-29",
+            "due": "2026-07-20",  # overdue vs generated_at
             "dollar_exposure": 180000.0,
             "recommended_action": "Respond in writing before the notice lapses.",
             "notice_deadline": True,
@@ -93,6 +100,18 @@ def test_format_due_collapses_iso_datetimes():
     assert format_due("2026-09-20T00:00:00+00:00") == "2026-09-20"
 
 
+def test_is_overdue_against_as_of():
+    assert is_overdue("2026-07-20", as_of="2026-07-23T00:00:00+00:00")
+    assert not is_overdue("2026-08-01", as_of="2026-07-23")
+    assert not is_overdue(None, as_of="2026-07-23")
+
+
+def test_critical_items_are_act_today_capped():
+    crit = critical_items(PAYLOAD["items"], limit=5)
+    assert len(crit) == 1
+    assert crit[0]["item_id"] == "i1"
+
+
 def test_sanitize_export_filename_strips_unsafe_chars():
     assert (
         sanitize_export_filename('Tower B / "Phase 2"', "pdf")
@@ -121,10 +140,16 @@ def test_xlsx_export_is_valid_workbook():
     assert summary["B6"].value == "pm@gc.com"
     assert summary["B7"].value == 3
     assert summary["B8"].value == 180000
+    assert summary["B9"].value == 1  # one overdue item
+    assert summary["A18"].value == "Critical action items (Act today)"
+    assert summary["A20"].value == "NOTICE OF DELAY — Tower B"
 
     hs = wb["Hotlist"]
     # Header + 3 data rows.
     assert hs.max_row == 4
+    assert hs.page_setup.orientation == "landscape"
+    assert hs.page_setup.fitToWidth == 1
+    assert hs.print_title_rows in ("1:1", "$1:$1")
     assert hs.cell(row=1, column=12).value == "Urgency"
     assert hs.cell(row=2, column=4).value == "NOTICE OF DELAY — Tower B"
     assert hs.cell(row=2, column=3).value == "NOTICE"
@@ -135,8 +160,14 @@ def test_xlsx_export_is_valid_workbook():
     assert hs.cell(row=3, column=9).value == 0
     # Missing exposure stays blank in the currency column.
     assert hs.cell(row=4, column=9).value is None
-    # ISO due timestamps collapse to the calendar date for readability.
-    assert hs.cell(row=4, column=8).value == "2026-08-01"
+    # Due dates are real Excel dates (sortable), not text.
+    due_overdue = hs.cell(row=2, column=8).value
+    due_future = hs.cell(row=4, column=8).value
+    assert (due_overdue.date() if hasattr(due_overdue, "date") else due_overdue) == date(
+        2026, 7, 20
+    )
+    assert (due_future.date() if hasattr(due_future, "date") else due_future) == date(2026, 8, 1)
+    assert hs.cell(row=2, column=8).font.color.rgb.endswith("E5484D")
 
     raw = wb["Raw"]
     assert raw.cell(row=3, column=2).value == "$0"

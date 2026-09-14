@@ -27,6 +27,7 @@ from .common import (
     esc_xml,
     format_due,
     format_money,
+    is_overdue,
     items_by_bucket,
     score_breakdown_text,
     source_label,
@@ -37,6 +38,7 @@ EMBER = colors.HexColor("#FF6A2B")
 MUTED = colors.HexColor("#667085")
 LINE = colors.HexColor("#E4E7EC")
 MIST = colors.HexColor("#F6F7F9")
+PRIO_RED = colors.HexColor("#E5484D")
 BUCKET_COLOR = {k: colors.HexColor(f"#{v}") for k, v in BUCKET_HEX.items()}
 
 
@@ -62,6 +64,14 @@ def _styles() -> dict[str, ParagraphStyle]:
         "cellsm": ParagraphStyle(
             "cs", parent=base["Normal"], fontSize=7, leading=9, textColor=MUTED
         ),
+        "overdue": ParagraphStyle(
+            "od",
+            parent=base["Normal"],
+            fontSize=7,
+            leading=9,
+            textColor=PRIO_RED,
+            fontName="Helvetica-Bold",
+        ),
         "empty": ParagraphStyle(
             "e", parent=base["Normal"], fontSize=10, textColor=MUTED, spaceBefore=12, spaceAfter=12
         ),
@@ -84,12 +94,24 @@ def _item_what_cell(item: dict[str, Any], st: dict[str, ParagraphStyle]) -> Para
     return Paragraph(f"{what}<br/>{body}", st["cellsm"])
 
 
+def _due_cell(item: dict[str, Any], st: dict[str, ParagraphStyle], *, as_of: Any) -> Paragraph:
+    label = format_due(item.get("due"))
+    if is_overdue(item.get("due"), as_of=as_of):
+        return Paragraph(f"{esc_xml(label)} (overdue)", st["overdue"])
+    return Paragraph(esc_xml(label), st["cellsm"])
+
+
 def _section_table(
-    items: list[dict[str, Any]], st: dict[str, ParagraphStyle], start_rank: int
+    items: list[dict[str, Any]],
+    st: dict[str, ParagraphStyle],
+    start_rank: int,
+    *,
+    as_of: Any,
 ) -> tuple[Table, int]:
     header = [
         Paragraph("<b>#</b>", st["cell"]),
         Paragraph("<b>What / Why</b>", st["cell"]),
+        Paragraph("<b>Owner</b>", st["cell"]),
         Paragraph("<b>Due</b>", st["cell"]),
         Paragraph("<b>$ Exp.</b>", st["cell"]),
         Paragraph("<b>Action</b>", st["cell"]),
@@ -113,7 +135,8 @@ def _section_table(
             [
                 Paragraph(str(rank), st["cell"]),
                 _item_what_cell(item, st),
-                Paragraph(esc_xml(format_due(item.get("due"))), st["cellsm"]),
+                Paragraph(esc_xml(item.get("owner") or "—"), st["cellsm"]),
+                _due_cell(item, st, as_of=as_of),
                 Paragraph(format_money(item.get("dollar_exposure")), st["cellsm"]),
                 Paragraph(esc_xml(item.get("recommended_action", "")), st["cellsm"]),
                 Paragraph(f"{float(item.get('score', 0) or 0):.0f}", st["cell"]),
@@ -124,17 +147,32 @@ def _section_table(
     table = Table(
         data,
         colWidths=[
-            0.35 * inch,
-            3.4 * inch,
+            0.3 * inch,
+            2.7 * inch,
             0.75 * inch,
-            0.7 * inch,
-            2.0 * inch,
-            0.5 * inch,
+            0.85 * inch,
+            0.65 * inch,
+            1.55 * inch,
+            0.45 * inch,
         ],
         repeatRows=1,
     )
     table.setStyle(TableStyle(style_cmds))
     return table, rank
+
+
+def _page_chrome(canvas, doc) -> None:  # noqa: ANN001
+    """Running footer with brand + page number (print-ready multi-page reports)."""
+    canvas.saveState()
+    canvas.setStrokeColor(LINE)
+    canvas.setLineWidth(0.5)
+    y = 0.4 * inch
+    canvas.line(0.7 * inch, y + 10, letter[0] - 0.7 * inch, y + 10)
+    canvas.setFont("Helvetica", 7)
+    canvas.setFillColor(MUTED)
+    canvas.drawString(0.7 * inch, y, "Osprey — The foreman that never sleeps.")
+    canvas.drawRightString(letter[0] - 0.7 * inch, y, f"Page {doc.page}")
+    canvas.restoreState()
 
 
 def hotlist_to_pdf(
@@ -145,13 +183,14 @@ def hotlist_to_pdf(
 ) -> bytes:
     st = _styles()
     buf = io.BytesIO()
+    # ~18mm margins — print/bind friendly without wasting page real estate.
     doc = SimpleDocTemplate(
         buf,
         pagesize=letter,
-        leftMargin=0.6 * inch,
-        rightMargin=0.6 * inch,
-        topMargin=0.55 * inch,
-        bottomMargin=0.55 * inch,
+        leftMargin=0.7 * inch,
+        rightMargin=0.7 * inch,
+        topMargin=0.6 * inch,
+        bottomMargin=0.65 * inch,
         title=f"Osprey Hotlist — {project_name}",
         author="Osprey",
     )
@@ -159,6 +198,9 @@ def hotlist_to_pdf(
     flow.append(Paragraph("Osprey — Hotlist", st["title"]))
     flow.append(Paragraph("The foreman that never sleeps.", st["tag"]))
 
+    items = list(payload.get("items") or [])
+    as_of = payload.get("generated_at")
+    overdue_n = sum(1 for it in items if is_overdue(it.get("due"), as_of=as_of))
     exposure = payload.get("total_exposure", 0) or 0
     prepared = esc_xml(prepared_by) if prepared_by else ""
     meta_bits = [
@@ -173,12 +215,13 @@ def hotlist_to_pdf(
             f"Total exposure: {esc_xml(format_money(exposure))}",
         ]
     )
+    if overdue_n:
+        meta_bits.append(f'<font color="#E5484D"><b>Overdue: {overdue_n}</b></font>')
     flow.append(Paragraph(" &nbsp;·&nbsp; ".join(meta_bits), st["meta"]))
     flow.append(Spacer(1, 6))
     flow.append(HRFlowable(width="100%", thickness=1.2, color=EMBER))
     flow.append(Spacer(1, 8))
 
-    items = list(payload.get("items") or [])
     if not items:
         flow.append(
             Paragraph(
@@ -207,7 +250,7 @@ def hotlist_to_pdf(
                         )
                     ]
                 ],
-                colWidths=[7.3 * inch],
+                colWidths=[7.1 * inch],
             )
             banner.setStyle(
                 TableStyle(
@@ -220,7 +263,7 @@ def hotlist_to_pdf(
                     ]
                 )
             )
-            table, rank = _section_table(bucket_items, st, rank)
+            table, rank = _section_table(bucket_items, st, rank, as_of=as_of)
             flow.append(KeepTogether([banner, Spacer(1, 4), table, Spacer(1, 10)]))
 
     flow.append(HRFlowable(width="100%", thickness=0.6, color=LINE))
@@ -229,9 +272,9 @@ def hotlist_to_pdf(
         Paragraph(
             f"Generated by Osprey · {payload.get('item_count', 0)} items · "
             f"{esc_xml(payload.get('generated_at', ''))} · "
-            "Scores show Urgency · Impact · Confidence",
+            "Scores show Urgency · Impact · Confidence · Overdue dues are highlighted",
             st["foot"],
         )
     )
-    doc.build(flow)
+    doc.build(flow, onFirstPage=_page_chrome, onLaterPages=_page_chrome)
     return buf.getvalue()

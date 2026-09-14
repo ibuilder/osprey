@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date, datetime
 from typing import Any
 
 BUCKET_ORDER = ("act_today", "this_week", "watch", "done")
@@ -45,14 +46,42 @@ def format_money(value: Any) -> str:
         return "—"
 
 
+def parse_due_date(value: Any) -> date | None:
+    """Parse a due/deadline into a calendar ``date``, or ``None`` if unknown."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    if "T" in text:
+        text = text.split("T", 1)[0]
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
 def format_due(value: Any) -> str:
     """Display a due/deadline value. ISO datetimes collapse to the calendar date."""
+    parsed = parse_due_date(value)
+    if parsed is not None:
+        return parsed.isoformat()
     if value is None or value == "":
         return "—"
-    text = str(value).strip()
-    if "T" in text:
-        return text.split("T", 1)[0]
-    return text
+    return str(value).strip() or "—"
+
+
+def is_overdue(due: Any, *, as_of: Any = None) -> bool:
+    """True when the due date is strictly before the as-of (or today) date."""
+    due_d = parse_due_date(due)
+    if due_d is None:
+        return False
+    ref = parse_due_date(as_of) or date.today()
+    return due_d < ref
 
 
 def score_parts(factors: dict[str, Any] | None) -> tuple[float | None, float | None, float | None]:
@@ -108,3 +137,9 @@ def items_by_bucket(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any
             grouped[key] = []
         grouped[key].append(item)
     return grouped
+
+
+def critical_items(items: list[dict[str, Any]], *, limit: int = 5) -> list[dict[str, Any]]:
+    """Highest-impact open work: Act-today items first, capped for the Summary rollup."""
+    act = [i for i in items if i.get("bucket") == "act_today"]
+    return act[:limit]
