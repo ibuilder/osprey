@@ -348,6 +348,21 @@ Worth stating plainly, since the pipeline is otherwise thorough:
 - **Live provider APIs.** Connector poll loops are tested against recorded/mocked
   HTTP, never a real Microsoft/Google/Procore tenant. See `docs/connecting.md` for the
   manual sandbox checklist.
+- **Autodesk Construction Cloud and Sage Intacct have never met a real account.** Both
+  were built without access to the vendors' own docs pages (APS renders them in
+  JavaScript; Sage's portal refuses automated reads). The ACC request and response
+  shapes come from Autodesk's published API text, and Sage's from recorded
+  production traffic in an open-source extractor. That is better than memory, but
+  the first live sandbox project for each is the real test. Neither handles
+  webhooks yet; both poll.
+- **Argus exports from a real Argus install.** Column matching is deliberately
+  forgiving because layouts vary by template, but it has only seen the headings in
+  its tests.
+- **Desktop alerts and background presence.** Unit tests cover which items alert and
+  that the toggle reports the OS state. Nothing shows that an OS notification
+  actually appears, that closing the window leaves Osprey in the tray, or that the
+  login item survives a sign-out on each OS. Check all three on a real machine when
+  you verify a release.
 - **Real push delivery.** APNs/FCM/Web Push senders are unit-tested; nothing verifies a
   notification actually lands on a device.
 - **A real identity provider.** The SSO suite stands up a local RSA key and serves a
