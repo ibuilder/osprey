@@ -75,6 +75,21 @@
   footer{border-top:1px solid var(--line);padding:34px 0;color:var(--muted);font-size:13px}
   footer .mono{font-family:var(--mono)}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+
+  /* Download */
+  .dl-meta{font-family:var(--mono);font-size:13px;color:var(--muted);margin:-18px 0 26px}
+  .dl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}
+  .dl{border:1px solid var(--line);border-radius:14px;padding:22px;background:#fff;display:flex;flex-direction:column}
+  .dl.mine{border-color:var(--ember);box-shadow:0 0 0 3px rgba(255,106,43,.15)}
+  .dl h3{margin:0 0 4px;font-size:18px;display:flex;align-items:center;gap:8px}
+  .dl .yours{font-family:var(--mono);font-size:11px;color:var(--ember);border:1px solid rgba(255,106,43,.4);border-radius:999px;padding:2px 8px}
+  .dl p{margin:0 0 16px;color:var(--muted);font-size:14px}
+  .dl .btn{text-align:center;margin-bottom:8px}
+  .dl .alt{font-size:13.5px;margin-top:auto;padding-top:6px}
+  .dl .alt a{margin-right:12px}
+  .dl-notes{margin-top:26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+  .dl-notes .card p{font-size:14px}
+  .dl-notes code{font-family:var(--mono);font-size:12.5px;background:var(--mist);padding:1px 5px;border-radius:4px}
   @media(max-width:720px){.two{grid-template-columns:1fr}.nav a:not(.gh){display:none}}
 </style>
 </head>
@@ -94,6 +109,7 @@
       <svg class="mark" viewBox="0 0 128 128" style="color:#fff"><use href="#osprey-mark"/></svg>
       <span class="name">Osprey</span>
       <span class="spacer"></span>
+      <a href="#download">Download</a>
       <a href="#how">How it works</a>
       <a href="#features">Features</a>
       <a href="code-signing-policy.html">Code signing policy</a>
@@ -105,8 +121,8 @@
       deadline across all the systems your project already uses — and hands you the five
       things that actually matter <em>today</em>.</p>
     <div class="cta">
-      <a class="btn primary" href="https://github.com/ibuilder/osprey">Get it on GitHub</a>
-      <a class="btn ghost" href="#how">See how it works</a>
+      <a class="btn primary" id="hero-download" href="#download">Download Osprey</a>
+      <a class="btn ghost" href="https://github.com/ibuilder/osprey">View on GitHub</a>
     </div>
   </div>
 </header>
@@ -127,6 +143,59 @@
   </div>
 </section>
 
+<section id="download">
+  <div class="wrap">
+    <h2>Download Osprey</h2>
+    <p class="sub">Free and open source. The desktop app includes its own private copy of the
+      brain, so it works on its own; point it at a shared server when your team needs one.</p>
+    <p class="dl-meta" id="dl-meta">Latest release</p>
+
+    <!-- Every link works without JavaScript: it lands on the latest release page. The
+         script below swaps in direct links to that release's files. -->
+    <div class="dl-grid">
+      <div class="dl" data-os="windows">
+        <h3>Windows</h3>
+        <p>Windows 10 or 11, 64-bit.</p>
+        <a class="btn primary" data-asset="_x64-setup.exe" href="https://github.com/ibuilder/osprey/releases/latest">Download installer (.exe)</a>
+        <div class="alt"><a data-asset="_x64_en-US.msi" href="https://github.com/ibuilder/osprey/releases/latest">.msi for IT deployment</a></div>
+      </div>
+      <div class="dl" data-os="mac">
+        <h3>macOS</h3>
+        <p>Choose your Mac's chip: Apple menu → About This Mac.</p>
+        <a class="btn primary" data-asset="_aarch64.dmg" href="https://github.com/ibuilder/osprey/releases/latest">Apple silicon (.dmg)</a>
+        <a class="btn dark" data-asset="_x64.dmg" href="https://github.com/ibuilder/osprey/releases/latest">Intel (.dmg)</a>
+      </div>
+      <div class="dl" data-os="linux">
+        <h3>Linux</h3>
+        <p>x86-64. The AppImage runs on most distributions.</p>
+        <a class="btn primary" data-asset="_amd64.AppImage" href="https://github.com/ibuilder/osprey/releases/latest">AppImage</a>
+        <div class="alt">
+          <a data-asset="_amd64.deb" href="https://github.com/ibuilder/osprey/releases/latest">.deb</a>
+          <a data-asset=".x86_64.rpm" href="https://github.com/ibuilder/osprey/releases/latest">.rpm</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="dl-notes">
+      <div class="card">
+        <h3>First launch warnings</h3>
+        <p>Osprey's installers are not code-signed yet, so your OS will warn you the first
+          time. On <b>Windows</b>, choose <i>More info → Run anyway</i>. On <b>macOS</b>,
+          right-click the app, choose <i>Open</i>, then <i>Open</i> again. Windows signing is
+          in progress: see the <a href="code-signing-policy.html">code signing policy</a>.</p>
+      </div>
+      <div class="card">
+        <h3>Verify your download</h3>
+        <p>Every release lists a SHA-256 hash for each file in
+          <a id="dl-sums" href="https://github.com/ibuilder/osprey/releases/latest">SHA256SUMS.txt</a>,
+          and carries signed build provenance you can check with
+          <code>gh attestation verify &lt;file&gt; --repo ibuilder/osprey</code>.
+          Installed apps update themselves, and verify each update's signature first.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="features" style="background:var(--mist)">
   <div class="wrap">
     <h2>Built by the physics of a real project.</h2>
@@ -135,7 +204,7 @@
     <div class="grid">
       <div class="card"><div class="ic">🎯</div><h3>Explainable, never a black box</h3><p>Every item shows its factor breakdown, the source text it's based on, and a recommended next action.</p></div>
       <div class="card"><div class="ic">⚖️</div><h3>Notice deadlines weighted highest</h3><p>Miss a contractual notice and you can waive a claim worth more than the fee. Osprey won't let that slip by quietly.</p></div>
-      <div class="card"><div class="ic">🔌</div><h3>All your sources, one list</h3><p>Outlook, Gmail, Procore, calendars — plus a forward-an-email / drop-a-CSV fallback for everything else.</p></div>
+      <div class="card"><div class="ic">🔌</div><h3>All your sources, one list</h3><p>Outlook, Gmail, calendars, Procore, Autodesk Construction Cloud, Sage Intacct and Argus exports — plus a forward-an-email / drop-a-CSV fallback for everything else.</p></div>
       <div class="card"><div class="ic">🔒</div><h3>Private &amp; self-hosted</h3><p>Runs on your own server. Read-only access, encrypted tokens, nothing routed through a third party.</p></div>
       <div class="card"><div class="ic">🤖</div><h3>Bring your own AI</h3><p>Point your own Claude or OpenAI key at the project and ask it, in plain English, to sift and push findings to the hotlist.</p></div>
       <div class="card"><div class="ic">📄</div><h3>Excel &amp; PDF in one click</h3><p>Print-ready hotlists for your OAC meeting, generated from the same snapshot so they always agree.</p></div>
@@ -156,30 +225,27 @@
 
     <div class="card" style="margin-top:28px">
       <h3 style="margin:0 0 6px">What you actually install</h3>
-      <p class="sub" style="margin-bottom:16px">Two pieces, and we'd rather say so up front than surprise you.</p>
+      <p class="sub" style="margin-bottom:16px">One installer to try it yourself; a server when the whole team needs it.</p>
       <div class="two">
         <div>
-          <p><b>1. The brain</b> — the service that does the watching. Run it on a spare
-          machine, a small server, or your own laptop:</p>
-          <pre><span class="c"># Docker optional — SQLite by default</span>
-cd backend
-pip install -e .
-uvicorn osprey.<span class="o">main</span>:app</pre>
-          <p class="muted" style="font-size:13.5px">Prefer the full stack — background
-          polling, Postgres, Redis? <span class="mono">docker compose up</span>.</p>
+          <p><b>The desktop app</b> — one download for Windows, macOS or Linux. It
+          includes its own private copy of the brain, so it runs on your machine with
+          nothing else to set up. Nothing leaves your computer.</p>
+          <p class="muted" style="font-size:13.5px">It keeps running in the tray and
+          notifies you when something needs you today.</p>
         </div>
         <div>
-          <p><b>2. The app</b> — a viewer for the brain. Windows and Linux builds
-          today (macOS needs signing certificates), or run it from source:</p>
-          <pre><span class="c"># point Backend URL at your brain</span>
-<span class="o">http://localhost:8000</span></pre>
-          <p class="muted" style="font-size:13.5px">The app connects to the brain; it
-          doesn't contain one. A single-installer build is on the roadmap, not done.</p>
+          <p><b>A shared server</b> — for a team, run the brain once and point everyone's
+          app at it:</p>
+          <pre><span class="c"># Docker, or Helm for Kubernetes</span>
+docker compose up</pre>
+          <p class="muted" style="font-size:13.5px">Postgres, Redis, SSO, SCIM and
+          background polling come with the full stack.</p>
         </div>
       </div>
       <div style="margin-top:18px">
-        <a class="btn dark" href="https://github.com/ibuilder/osprey/releases">Downloads</a>
-        <a class="btn" style="border-color:var(--line)" href="https://github.com/ibuilder/osprey#run-it">Setup guide</a>
+        <a class="btn dark" href="#download">Download</a>
+        <a class="btn" style="border-color:var(--line)" href="https://github.com/ibuilder/osprey#run-it">Server setup guide</a>
       </div>
     </div>
   </div>
@@ -230,6 +296,63 @@ python -m osprey.<span class="o">seed</span></pre>
     <span class="mono">Ink #0E1A2B · Ember #FF6A2B · AGPL-3.0</span>
   </div>
 </footer>
+
+<script>
+// Point the download buttons at the latest release's own files. Without this (no
+// JavaScript, or the GitHub API rate limit), every button still opens the latest
+// release page, so nothing here is required for downloading to work.
+(function () {
+  var os = (function () {
+    var p = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "").toLowerCase();
+    if (p.indexOf("win") !== -1) return "windows";
+    if (p.indexOf("mac") !== -1) return "mac";
+    if (p.indexOf("linux") !== -1 && p.indexOf("android") === -1) return "linux";
+    return "";
+  })();
+  var card = os && document.querySelector('.dl[data-os="' + os + '"]');
+  if (card) {
+    card.classList.add("mine");
+    var badge = document.createElement("span");
+    badge.className = "yours";
+    badge.textContent = "your system";
+    card.querySelector("h3").appendChild(badge);
+    var hero = document.getElementById("hero-download");
+    var first = card.querySelector("h3").firstChild.textContent.trim();
+    if (hero) hero.textContent = "Download for " + first;
+  }
+
+  fetch("https://api.github.com/repos/ibuilder/osprey/releases/latest", {
+    headers: { Accept: "application/vnd.github+json" },
+  })
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (release) {
+      var assets = release.assets || [];
+      function find(suffix) {
+        for (var i = 0; i < assets.length; i++) {
+          if (assets[i].name.slice(-suffix.length) === suffix) return assets[i];
+        }
+        return null;
+      }
+      document.querySelectorAll("[data-asset]").forEach(function (link) {
+        var asset = find(link.getAttribute("data-asset"));
+        if (asset) {
+          link.href = asset.browser_download_url;
+          link.title = asset.name + " · " + (asset.size / 1048576).toFixed(0) + " MB";
+        }
+      });
+      var sums = find("SHA256SUMS.txt");
+      if (sums) document.getElementById("dl-sums").href = sums.browser_download_url;
+      var meta = document.getElementById("dl-meta");
+      var when = release.published_at ? new Date(release.published_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "";
+      meta.textContent = "";
+      var link = document.createElement("a");
+      link.href = release.html_url;
+      link.textContent = (release.name || release.tag_name) + (when ? " · " + when : "");
+      meta.appendChild(link);
+    })
+    .catch(function () { /* keep the release-page links */ });
+})();
+</script>
 
 </body>
 </html>
