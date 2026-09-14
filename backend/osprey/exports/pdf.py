@@ -69,9 +69,7 @@ def _styles() -> dict[str, ParagraphStyle]:
 
 
 def _item_what_cell(item: dict[str, Any], st: dict[str, ParagraphStyle]) -> Paragraph:
-    notice = (
-        ' <font color="#E5484D"><b>[NOTICE]</b></font>' if item.get("notice_deadline") else ""
-    )
+    notice = ' <font color="#E5484D"><b>[NOTICE]</b></font>' if item.get("notice_deadline") else ""
     what = f"<b>{esc_xml(item.get('what', ''))}</b>{notice}"
     why = esc_xml(item.get("why", ""))
     breakdown = score_breakdown_text(item.get("factors"))
@@ -221,7 +219,7 @@ def hotlist_to_pdf(
                     ]
                 )
             )
-            table, rank = _section_table(bucket, bucket_items, st, rank)
+            table, rank = _section_table(bucket_items, st, rank)
             flow.append(KeepTogether([banner, Spacer(1, 4), table, Spacer(1, 10)]))
 
     flow.append(HRFlowable(width="100%", thickness=0.6, color=LINE))

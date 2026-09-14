@@ -88,7 +88,10 @@ def test_format_money_distinguishes_zero_from_missing():
 
 
 def test_sanitize_export_filename_strips_unsafe_chars():
-    assert sanitize_export_filename('Tower B / "Phase 2"', "pdf") == "osprey-hotlist-Tower_B_Phase_2.pdf"
+    assert (
+        sanitize_export_filename('Tower B / "Phase 2"', "pdf")
+        == "osprey-hotlist-Tower_B_Phase_2.pdf"
+    )
     assert sanitize_export_filename("A & B <C>", "xlsx").endswith(".xlsx")
     assert " " not in sanitize_export_filename("x y", "pdf")
 
@@ -166,7 +169,9 @@ def test_pdf_empty_hotlist_still_renders():
         "generated_at": "2026-07-23T00:00:00+00:00",
         "item_count": 0,
         "total_exposure": 0,
-        "buckets": {k: {"count": 0, "exposure": 0.0} for k in ("act_today", "this_week", "watch", "done")},
+        "buckets": {
+            k: {"count": 0, "exposure": 0.0} for k in ("act_today", "this_week", "watch", "done")
+        },
         "items": [],
     }
     data = hotlist_to_pdf(empty, project_name="Empty")
