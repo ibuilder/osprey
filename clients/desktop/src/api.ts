@@ -167,6 +167,32 @@ export interface ActiveSession {
   ip: string;
 }
 
+export interface ConnectionHealth {
+  id: string;
+  source_type: string;
+  account_ref: string;
+  /** pending | active | degraded | error | revoked */
+  status: string;
+  last_sync: string | null;
+  last_error: string | null;
+  project_id: string;
+}
+
+export interface OrgStats {
+  projects: number;
+  connections: number;
+  ai_connections: number;
+  scripts: number;
+  items: number;
+  signals: number;
+}
+
+export interface TenantIsolation {
+  enabled: boolean;
+  enforced: boolean;
+  detail: string;
+}
+
 function sessionFrom(baseUrl: string, d: any): Session {
   return {
     baseUrl,
@@ -388,6 +414,12 @@ export class Api {
       method: "POST",
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     });
+
+  // Admin health console (admin+).
+  connectionsHealth = () => this.req<ConnectionHealth[]>("/admin/connections/health");
+  auditVerify = () => this.req<{ org_id: string; audit_chain_intact: boolean }>("/admin/audit/verify");
+  orgStats = () => this.req<OrgStats>("/admin/stats");
+  tenantIsolation = () => this.req<TenantIsolation>("/admin/security/tenant-isolation");
 
   exportUrl = (projectId: string, fmt: "xlsx" | "pdf") =>
     `${this.session.baseUrl}/projects/${projectId}/hotlist/export?format=${fmt}`;
