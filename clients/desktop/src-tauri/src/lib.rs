@@ -241,6 +241,9 @@ async fn oauth_connect(
     session: State<'_, Session>,
     source_type: String,
     project_id: String,
+    // Optional scopes the admin explicitly opted into (e.g. ACC `data:write` for
+    // webhooks). The backend refuses any the connector does not offer.
+    optional_scopes: Option<Vec<String>>,
 ) -> Result<serde_json::Value, String> {
     let base_url = session.base_url.lock().unwrap().clone();
     let token = session.token.lock().unwrap().clone();
@@ -264,6 +267,7 @@ async fn oauth_connect(
             "project_id": project_id,
             "source_type": source_type,
             "redirect_uri": redirect_uri,
+            "optional_scopes": optional_scopes.unwrap_or_default(),
         }))
         .send()
         .await

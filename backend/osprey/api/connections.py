@@ -68,6 +68,7 @@ async def list_sources(_: Principal = Depends(current_principal)) -> list[Source
                     "oauth" if spec else ("forward" if connector.supports_webhooks else "internal")
                 ),
                 scopes=list(spec.scopes) if spec else [],
+                optional_scopes=dict(connector.optional_scopes) if spec else {},
                 configured=bool(client_id) if spec else True,
             )
         )
@@ -112,6 +113,18 @@ async def authorize(
             f"{body.source_type} OAuth app is not configured on the server",
         )
 
+    # Only scopes the connector itself offers as optional, each with its stated
+    # reason, may be added. Anything else is refused rather than silently dropped,
+    # so a client can never widen a connection's access by naming a scope.
+    offered = connector.optional_scopes
+    unknown = [s for s in body.optional_scopes if s not in offered]
+    if unknown:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"{body.source_type} does not offer optional scope(s): {', '.join(unknown)}",
+        )
+    opted = sorted(set(body.optional_scopes))
+
     verifier = challenge = None
     if spec.use_pkce:
         verifier, challenge = make_pkce()
@@ -123,6 +136,9 @@ async def authorize(
             "redirect_uri": body.redirect_uri,
             "account_ref": body.account_ref,
             "cv": verifier,
+            # Sealed with the state, so the exchange records exactly what the admin
+            # opted into here, not whatever a later request claims.
+            "opt": opted,
         }
     )
     url = build_authorize_url(
@@ -131,6 +147,7 @@ async def authorize(
         redirect_uri=body.redirect_uri,
         state=state,
         code_challenge=challenge,
+        extra_scopes=opted,
     )
     return AuthorizeChallenge(authorize_url=url, state=state)
 
@@ -171,7 +188,7 @@ async def exchange(
         project_id=claims["project_id"],
         source_type=source_type,
         account_ref=account_ref,
-        scopes=list(spec.scopes) if spec else [],
+        scopes=[*(spec.scopes if spec else []), *claims.get("opt", [])],
         encrypted_tokens=crypto.seal(tokens),
         status=ConnectionStatus.active,
     )

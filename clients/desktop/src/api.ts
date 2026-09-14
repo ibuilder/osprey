@@ -332,7 +332,16 @@ export class Api {
   createProject = (name: string) =>
     this.req<{ id: string }>("/projects", { method: "POST", body: JSON.stringify({ name }) });
 
-  sources = () => this.req<{ source_type: string; auth: string; configured: boolean }[]>("/connections/sources");
+  sources = () =>
+    this.req<
+      {
+        source_type: string;
+        auth: string;
+        configured: boolean;
+        /** Scope -> why it would be requested; granted only if the admin opts in. */
+        optional_scopes?: Record<string, string>;
+      }[]
+    >("/connections/sources");
   connections = (projectId: string) => this.req<any[]>(`/connections?project_id=${projectId}`);
 
   hotlist = (projectId: string, refresh = false) =>

@@ -78,10 +78,12 @@ async def sync_subscription(
     state = await connector.ensure_subscription(to_view(row), notify_url, lifecycle_url)
     if state is None:
         return None
-    merge_tokens(
-        row,
-        {"subscription_id": state.subscription_id, "client_state": state.client_state},
-    )
+    updates = {"subscription_id": state.subscription_id, "client_state": state.client_state}
+    if connector.webhook_auth == "signature":
+        # For a provider that signs callbacks, the state's secret is the key the
+        # webhook route verifies against.
+        updates["webhook_secret"] = state.client_state
+    merge_tokens(row, updates)
     session.add(row)
     return state
 
@@ -95,6 +97,8 @@ async def handle_lifecycle(
     is gone or about to be: re-subscribe. ``missed`` means the provider could not
     deliver some notifications, so the only way to recover those changes is to
     poll — which is safe to do because ingestion dedupes on ``external_id``.
+    ``poll`` is a verified "something changed" callback from a provider whose body
+    Osprey does not parse (Autodesk); it takes the same dedupe-safe path.
     """
     from ..workers.tasks import poll_connection  # local: workers import this module
 
@@ -110,7 +114,7 @@ async def handle_lifecycle(
         except Exception as exc:  # noqa: BLE001 - report, don't 500 at the provider
             log.warning("re-subscribe failed for connection %s: %s", row.id, exc)
 
-    if "missed" in events:
+    if {"missed", "poll"} & set(events):
         await session.flush()
         result = await poll_connection(session, row.id)
         actions.append(f"polled:{result.get('created', 0)}")

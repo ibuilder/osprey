@@ -8,7 +8,7 @@ plugins registered on the :data:`registry`; the core never changes to add one.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -80,6 +80,11 @@ class Connection(BaseModel):
 class Connector(ABC):
     source_type: str
     scopes: list[str] = []
+    #: Scopes an admin may choose to grant on top of ``scopes``, each mapped to the
+    #: plain-language reason shown before they opt in. Requested only when opted into
+    #: at authorize time, and recorded on the connection. This is the one place a
+    #: scope beyond read access can appear, and only with its reason.
+    optional_scopes: dict[str, str] = {}
     supports_webhooks: bool = False
 
     # -- OAuth (desktop-app driven) ------------------------------------------ #
@@ -144,12 +149,18 @@ class Connector(ABC):
     #: through a relay we control. ``"client_state"`` — the shared secret Osprey
     #: gave the provider when subscribing, echoed back in the payload. Providers
     #: like Microsoft Graph sign nothing and offer only the latter, so demanding
-    #: an HMAC from them would reject every genuine notification.
+    #: an HMAC from them would reject every genuine notification. ``"signature"``
+    #: — the provider signs the raw body with a secret Osprey registered with it
+    #: (stored on the connection as ``webhook_secret``); the connector verifies.
     webhook_auth: str = "hmac"
 
     def webhook_client_state(self, payload: dict) -> str | None:
         """Extract the echoed shared secret from a payload, if it carries one."""
         return None
+
+    def verify_webhook_signature(self, raw: bytes, headers: Mapping[str, str], secret: str) -> bool:
+        """For ``webhook_auth = "signature"``: is this raw body signed with ``secret``?"""
+        return False
 
     # -- Webhook subscription lifecycle -------------------------------------- #
     supports_subscriptions: bool = False

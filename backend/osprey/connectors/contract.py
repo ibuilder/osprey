@@ -37,7 +37,7 @@ from .base import Connector, NormalizedSignal, RawEvent, registry
 SOURCE_TYPE_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{1,39}$")
 
 #: How a webhook may be authenticated. See ``Connector.webhook_auth``.
-WEBHOOK_AUTH_MODES = frozenset({"hmac", "client_state"})
+WEBHOOK_AUTH_MODES = frozenset({"hmac", "client_state", "signature"})
 
 # Osprey reads; it never writes back to a source. A scope that grants writes is a
 # standing liability if the token leaks, for no benefit to anything Osprey does.
@@ -113,7 +113,30 @@ def _check_scopes(cls: type[Connector], report: ContractReport) -> None:
         if scope in _FULL_ACCESS_SCOPES or _WRITE_SCOPE.search(scope):
             report.fail(
                 f"scope {scope!r} grants more than read access; request the narrowest "
-                "read-only scope the provider offers"
+                "read-only scope the provider offers, or make it an optional scope an "
+                "admin opts into, with the reason"
+            )
+
+
+def _check_optional_scopes(cls: type[Connector], report: ContractReport) -> None:
+    """Anything beyond read access must be opt-in, and must say why."""
+    report.checked.append("optional scopes are opt-in and explained")
+    optional = cls.optional_scopes
+    if not isinstance(optional, dict):
+        report.fail("optional_scopes must be a dict of scope -> reason")
+        return
+    for scope, reason in optional.items():
+        if not isinstance(scope, str) or not scope:
+            report.fail("optional_scopes keys must be non-empty scope strings")
+        elif not isinstance(reason, str) or len(reason.strip()) < 20:
+            report.fail(
+                f"optional scope {scope!r} needs a plain-language reason (shown to the "
+                "admin before they grant it)"
+            )
+        if isinstance(cls.scopes, list) and scope in cls.scopes:
+            report.fail(
+                f"{scope!r} is in both scopes and optional_scopes; an optional scope must "
+                "not be requested unless opted into"
             )
 
 
@@ -142,6 +165,11 @@ def _check_webhook_auth(cls: type[Connector], report: ContractReport) -> None:
     elif cls.webhook_auth == "client_state" and not _overrides(cls, "webhook_client_state"):
         report.fail(
             "webhook_auth is 'client_state' but webhook_client_state() is not implemented, "
+            "so every callback would fail authentication"
+        )
+    elif cls.webhook_auth == "signature" and not _overrides(cls, "verify_webhook_signature"):
+        report.fail(
+            "webhook_auth is 'signature' but verify_webhook_signature() is not implemented, "
             "so every callback would fail authentication"
         )
 
@@ -253,6 +281,7 @@ async def check_connector(
 
     _check_identity(connector_cls, report, require_registered)
     _check_scopes(connector_cls, report)
+    _check_optional_scopes(connector_cls, report)
     _check_methods(connector_cls, report)
     _check_webhook_auth(connector_cls, report)
     _check_oauth(connector, report)
