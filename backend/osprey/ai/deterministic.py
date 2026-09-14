@@ -49,7 +49,9 @@ _CATEGORY_RULES: list[tuple[Category, re.Pattern[str]]] = [
     (
         Category.invoice,
         re.compile(
-            r"\b(invoice|payment application|pay app|pay application|retention|billing)\b", re.I
+            r"\b(invoice|payment application|pay app|pay application|retention|billing|"
+            r"accounts payable)\b",
+            re.I,
         ),
     ),
     (
