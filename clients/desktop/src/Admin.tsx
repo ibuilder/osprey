@@ -11,13 +11,16 @@ import {
   ActiveSession,
   Api,
   canGrant,
+  ConnectionHealth,
   Invite,
   Member,
+  OrgStats,
   PurgePreview,
   Retention,
   Role,
   ROLES,
   ScimToken,
+  TenantIsolation,
 } from "./api";
 
 /** "Chrome on Windows" from a full user-agent string; the raw one is noise. */
@@ -133,10 +136,126 @@ export function AdminView({ api, role, userId }: { api: Api; role: string; userI
   const isOwner = role === "owner";
   return (
     <div>
+      <HealthSection api={api} />
       <MembersSection api={api} role={role} userId={userId} />
       <InvitesSection api={api} role={role} />
       {isOwner && <ScimSection api={api} />}
       <RetentionSection api={api} role={role} />
+    </div>
+  );
+}
+
+type Loaded<T> = { value: T } | { error: string } | null;
+
+function settle<T>(p: Promise<T>): Promise<Loaded<T>> {
+  return p.then(
+    (value) => ({ value }),
+    (e) => ({ error: errText(e) }),
+  );
+}
+
+/** Connections that need someone to look at them sort first. */
+const STATUS_ORDER: Record<string, number> = { error: 0, degraded: 1, revoked: 2, pending: 3, active: 4 };
+
+/**
+ * The admin health console: is every source syncing, is the audit log intact, is
+ * tenant isolation actually enforced. Each check loads on its own, so one failing
+ * endpoint shows its error without hiding the others.
+ */
+export function HealthSection({ api }: { api: Api }) {
+  const [connections, setConnections] = useState<Loaded<ConnectionHealth[]>>(null);
+  const [audit, setAudit] = useState<Loaded<{ audit_chain_intact: boolean }>>(null);
+  const [isolation, setIsolation] = useState<Loaded<TenantIsolation>>(null);
+  const [stats, setStats] = useState<Loaded<OrgStats>>(null);
+
+  const reload = () => {
+    settle(api.connectionsHealth()).then(setConnections);
+    settle(api.auditVerify()).then(setAudit);
+    settle(api.tenantIsolation()).then(setIsolation);
+    settle(api.orgStats()).then(setStats);
+  };
+  useEffect(() => {
+    reload();
+  }, []);
+
+  const rows =
+    connections && "value" in connections
+      ? [...connections.value].sort(
+          (a, b) => (STATUS_ORDER[a.status] ?? 5) - (STATUS_ORDER[b.status] ?? 5),
+        )
+      : [];
+  const failing = rows.filter((r) => r.status === "error" || r.status === "degraded").length;
+
+  return (
+    <div className="card">
+      <div className="row">
+        <b>Health</b>
+        <div className="spacer" />
+        <button onClick={reload}>Check again</button>
+      </div>
+      {stats && "value" in stats && (
+        <div className="muted" style={{ marginTop: 4 }}>
+          {stats.value.projects} project(s) · {stats.value.connections} connection(s) ·{" "}
+          {stats.value.signals} signal(s) · {stats.value.items} item(s)
+        </div>
+      )}
+
+      <div className="health-checks">
+        {audit === null ? (
+          <div className="muted">Checking the audit log…</div>
+        ) : "error" in audit ? (
+          <div className="notice">Audit log check failed: {audit.error}</div>
+        ) : audit.value.audit_chain_intact ? (
+          <div className="health ok">Audit log chain is intact.</div>
+        ) : (
+          <div className="health bad">
+            Audit log chain is broken: records may have been altered or removed. Investigate before
+            relying on the audit trail.
+          </div>
+        )}
+
+        {isolation === null ? (
+          <div className="muted">Checking tenant isolation…</div>
+        ) : "error" in isolation ? (
+          <div className="notice">Tenant isolation check failed: {isolation.error}</div>
+        ) : (
+          <div className={`health ${isolation.value.enforced ? "ok" : "warn"}`}>
+            Tenant isolation {isolation.value.enforced ? "is enforced" : "is not enforced"}:{" "}
+            {isolation.value.detail}
+          </div>
+        )}
+      </div>
+
+      <div className="row" style={{ marginTop: 12 }}>
+        <b style={{ fontSize: 14 }}>Connections</b>
+        {failing > 0 && <span className="pill status-error">{failing} need attention</span>}
+      </div>
+      {connections === null && <div className="muted">Loading…</div>}
+      {connections && "error" in connections && <div className="notice">{connections.error}</div>}
+      {connections && "value" in connections && rows.length === 0 && (
+        <div className="muted">No sources connected yet.</div>
+      )}
+      {rows.length > 0 && (
+        <table className="admin-table">
+          <tbody>
+            {rows.map((c) => (
+              <tr key={c.id}>
+                <td>
+                  <span className="pill">{c.source_type}</span>{" "}
+                  <span className="muted">{c.account_ref}</span>
+                </td>
+                <td>
+                  <span className={`pill status-${c.status}`}>{c.status}</span>
+                </td>
+                <td className="muted">
+                  {c.last_sync ? `synced ${when(c.last_sync)}` : "never synced"}
+                  {c.last_error && <div className="health-error">{c.last_error}</div>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
