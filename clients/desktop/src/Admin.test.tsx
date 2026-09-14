@@ -7,6 +7,7 @@ import {
   InvitesSection,
   MembersSection,
   PasswordSection,
+  DataSection,
   RetentionSection,
   ScimSection,
   SessionsSection,
@@ -78,6 +79,10 @@ function stubApi(overrides: Partial<Record<keyof Api, unknown>> = {}) {
     revokeSession: vi.fn().mockResolvedValue(undefined),
     logoutAll: vi.fn().mockResolvedValue(undefined),
     changePassword: vi.fn().mockResolvedValue(undefined),
+    orgSettings: vi.fn().mockResolvedValue({ org_id: "o1", org_name: "Tower B GC" }),
+    exportOrg: vi.fn().mockResolvedValue({ org: { name: "Tower B GC" } }),
+    deleteOrg: vi.fn().mockResolvedValue({ org_id: "o1", requested_at: null, completed: true }),
+    deletionStatus: vi.fn().mockResolvedValue({ org_id: "o1", requested_at: null, completed: false }),
     ...overrides,
   } as unknown as Api;
 }
@@ -302,6 +307,80 @@ describe("RetentionSection", () => {
     expect(await screen.findByDisplayValue("30")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Save policy" })).not.toBeInTheDocument();
     expect(screen.getByText(/Only an owner/)).toBeInTheDocument();
+  });
+});
+
+describe("DataSection", () => {
+  it("exports everything to a file and says where it went", async () => {
+    const user = userEvent.setup();
+    const api = stubApi();
+    const save = vi.fn().mockResolvedValue("C:\\Users\\me\\Downloads\\osprey-export.json");
+    render(<DataSection api={api} onSignedOut={vi.fn()} save={save} />);
+
+    await user.click(screen.getByRole("button", { name: "Export all data" }));
+
+    expect(await screen.findByText(/Export saved to C:\\Users\\me\\Downloads/)).toBeInTheDocument();
+    const [filename, contents] = save.mock.calls[0];
+    expect(filename).toMatch(/^osprey-export-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(JSON.parse(contents)).toEqual({ org: { name: "Tower B GC" } });
+  });
+
+  it("will not delete until the exact name is typed, then asks again", async () => {
+    const user = userEvent.setup();
+    const api = stubApi();
+    const onSignedOut = vi.fn();
+    render(<DataSection api={api} onSignedOut={onSignedOut} save={vi.fn()} />);
+    const input = await screen.findByRole("textbox");
+    await screen.findByText("Tower B GC");
+
+    await user.type(input, "Tower B");
+    expect(screen.getByRole("button", { name: "Delete organization" })).toBeDisabled();
+
+    await user.type(input, " GC");
+    await user.click(screen.getByRole("button", { name: "Delete organization" }));
+    expect(api.deleteOrg).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Delete it permanently" }));
+
+    expect(api.deleteOrg).toHaveBeenCalledWith("Tower B GC");
+    await waitFor(() => expect(onSignedOut).toHaveBeenCalled());
+  });
+
+  it("shows a queued deletion and signs out once it is finished", async () => {
+    const user = userEvent.setup();
+    const api = stubApi({
+      deleteOrg: vi
+        .fn()
+        .mockResolvedValue({ org_id: "o1", requested_at: "2026-09-14T10:00:00Z", completed: false }),
+      deletionStatus: vi.fn().mockRejectedValue(new Error("account is disabled")),
+    });
+    const onSignedOut = vi.fn();
+    render(<DataSection api={api} onSignedOut={onSignedOut} save={vi.fn()} />);
+    await screen.findByText("Tower B GC");
+    await user.type(screen.getByRole("textbox"), "Tower B GC");
+    await user.click(screen.getByRole("button", { name: "Delete organization" }));
+    await user.click(screen.getByRole("button", { name: "Delete it permanently" }));
+
+    expect(await screen.findByText(/removed in the background/)).toBeInTheDocument();
+    expect(onSignedOut).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Check progress" }));
+    await waitFor(() => expect(onSignedOut).toHaveBeenCalled());
+  });
+
+  it("shows the server's refusal instead of signing out", async () => {
+    const user = userEvent.setup();
+    const api = stubApi({
+      deleteOrg: vi.fn().mockRejectedValue(new Error("confirm_org_name does not match")),
+    });
+    const onSignedOut = vi.fn();
+    render(<DataSection api={api} onSignedOut={onSignedOut} save={vi.fn()} />);
+    await screen.findByText("Tower B GC");
+    await user.type(screen.getByRole("textbox"), "Tower B GC");
+    await user.click(screen.getByRole("button", { name: "Delete organization" }));
+    await user.click(screen.getByRole("button", { name: "Delete it permanently" }));
+
+    expect(await screen.findByText(/does not match/)).toBeInTheDocument();
+    expect(onSignedOut).not.toHaveBeenCalled();
   });
 });
 

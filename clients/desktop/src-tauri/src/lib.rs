@@ -208,6 +208,38 @@ fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
     launcher.is_enabled().map_err(|e| e.to_string())
 }
 
+/// Write an organization export into the user's Downloads folder and return the
+/// path. The webview cannot save files itself. Only the file name is taken from the
+/// caller, never a directory, and an existing file is never overwritten.
+#[tauri::command]
+fn save_export(
+    app: tauri::AppHandle,
+    filename: String,
+    contents: String,
+) -> Result<String, String> {
+    let name = std::path::Path::new(&filename)
+        .file_name()
+        .ok_or("invalid file name")?
+        .to_owned();
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    let mut path = dir.join(&name);
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let ext = path
+        .extension()
+        .map(|s| format!(".{}", s.to_string_lossy()))
+        .unwrap_or_default();
+    let mut n = 1;
+    while path.exists() {
+        path = dir.join(format!("{stem} ({n}){ext}"));
+        n += 1;
+    }
+    std::fs::write(&path, contents).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -515,7 +547,8 @@ pub fn run() {
             backend_status,
             notify_critical,
             autostart_enabled,
-            set_autostart
+            set_autostart,
+            save_export
         ])
         .build(tauri::generate_context!())
         .expect("error while running Osprey")

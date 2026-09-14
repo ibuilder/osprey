@@ -276,7 +276,7 @@ function Main({
       <div className="body">
         {!projectId && !PROJECT_FREE.includes(tab) && <div className="muted">Create a project to begin.</div>}
         {tab === "admin" && canGrant(session.role, "admin") && (
-          <AdminView api={api} role={session.role} userId={session.userId} />
+          <AdminView api={api} role={session.role} userId={session.userId} onSignedOut={() => onSession(null)} />
         )}
         {tab === "account" && <AccountView api={api} onSignedOut={() => onSession(null)} />}
         {projectId && tab === "hotlist" && <HotlistView api={api} projectId={projectId} />}
