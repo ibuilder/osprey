@@ -101,9 +101,10 @@ a webhook.
 
 ## Sage Intacct (open receivables)
 
-Osprey reads **Accounts Receivable invoices that still have money due** through the
-Sage Intacct REST API, and ranks them by due date and outstanding amount. Paid
-invoices are skipped. Nothing is ever written back.
+Osprey reads **invoices you are owed** (Accounts Receivable) and **bills you owe**
+(Accounts Payable) that still have money due, through the Sage Intacct REST API, and
+ranks them by due date and outstanding amount. Paid ones are skipped. Nothing is ever
+written back.
 
 1. Register a Sage Intacct REST API client for your company (Sage's developer
    documentation covers where your edition keeps this), and give it a **read-only**
@@ -118,7 +119,13 @@ invoices are skipped. Nothing is ever written back.
    `entity` is only needed for a multi-entity company, to choose whose books to read.
 
 Osprey exchanges the credentials for a token on each poll (`client_credentials`),
-so there is no browser consent step for this source. AP bills are not read yet.
+so there is no browser consent step for this source.
+
+**Bills adapt to your company's setup.** Bill field names differ between Sage Intacct
+configurations, so on each poll Osprey asks Sage's model service which fields your bill
+object has and queries only those. If the role can't read payables, or the bill model
+has no due date or amount due to rank by, bills are skipped (the reason is logged) and
+invoices keep syncing. Give the role read access to Accounts Payable to include bills.
 
 ## File-Drop / Forward-To (no OAuth)
 
