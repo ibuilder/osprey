@@ -95,7 +95,7 @@ updates:
   # Previously unwatched, which left a gap the pipeline could see but not close:
   # Trivy reports base-image CVEs and its own comment in ci.yml says to treat them
   # as "a signal to bump the base image" — while nothing ever proposed that bump.
-  # `python:3.12-slim` appears twice (builder + runtime) and Dependabot moves both.
+  # `python:3.14-slim` appears twice (builder + runtime) and Dependabot moves both.
   #
   # docker-compose.yml is deliberately NOT watched: its postgres/redis pins are
   # local-dev infrastructure, and production points at managed services through
@@ -106,14 +106,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
-    # Patch-level image updates (3.12.x) are exactly what this entry is for. A new
-    # Python minor is not, on its own: CI now tests 3.11-3.14 and its 3.14 leg
-    # checks that constraints-prod.txt still resolves there, but the image, the
-    # release sidecar build and the Postgres job all still run 3.12. Move them
-    # together, deliberately, then raise this (#45 proposed 3.14 and was closed).
+    # Patch-level image updates (3.14.x) are exactly what this entry is for. A new
+    # Python minor is not, on its own: the image, the release sidecar build and
+    # the Postgres and supply-chain jobs all run the same interpreter, and CI's
+    # backend matrix tops out at 3.14. Add the next minor to that matrix, confirm
+    # the pins resolve there, move all four together, then raise this.
     ignore:
       - dependency-name: "python"
-        versions: [">=3.13"]
+        versions: [">=3.15"]
     labels: ["dependencies", "docker", "security"]
 
   # Pin drift in the workflows themselves.
