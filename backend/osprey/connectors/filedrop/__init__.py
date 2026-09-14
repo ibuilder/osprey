@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import hashlib
 import io
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -24,6 +25,17 @@ from ...models import SourceKind, utcnow
 from ...normalize import clean_text
 from ..base import Connection as ConnView
 from ..base import Connector, Health, NormalizedSignal, RawEvent, registry
+
+
+def stable_id(prefix: str, *parts: str) -> str:
+    """A dedupe key derived from content, identical in every process.
+
+    Python's ``hash()`` is salted per interpreter (PYTHONHASHSEED), so an id built
+    from it changed on every restart: the same forwarded email, delivered again
+    after a deploy, got a new external_id and was ingested a second time.
+    """
+    digest = hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+    return f"{prefix}:{digest[:16]}"
 
 
 def _decode_part(part: Message) -> str:
@@ -68,7 +80,7 @@ def parse_email(raw: str | bytes, *, external_id: str | None = None) -> RawEvent
             occurred = parsedate_to_datetime(date_hdr)
 
     body = clean_text(_body_from_email(msg))
-    ext = external_id or message_id or f"filedrop:{hash((subject, body)) & 0xFFFFFFFF:08x}"
+    ext = external_id or message_id or stable_id("filedrop", subject, body)
     return RawEvent(
         external_id=ext,
         source_kind=SourceKind.email,
@@ -151,9 +163,8 @@ class FileDropConnector(Connector):
                 yield ev
         else:
             yield RawEvent(
-                external_id=payload.get(
-                    "external_id", f"drop-{hash(str(payload)) & 0xFFFFFFFF:08x}"
-                ),
+                external_id=payload.get("external_id")
+                or stable_id("drop", str(payload.get("title", "")), str(payload.get("body", ""))),
                 source_kind=SourceKind(payload.get("source_kind", "general")),
                 title=payload.get("title", ""),
                 body=clean_text(payload.get("body", ""), drop_quoted=False),

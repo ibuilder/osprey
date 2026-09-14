@@ -1,0 +1,37 @@
+# A connector plugin for Osprey. Copy this directory, rename the package, and
+# replace the example tracker with your source. See ../README.md.
+[build-system]
+requires = ["setuptools>=83.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "osprey-connector-example"
+version = "0.1.0"
+description = "Example Osprey connector: an issue tracker with a REST API and webhooks."
+requires-python = ">=3.11"
+# The connector API is Apache-2.0/MIT-friendly to build against; choose your own
+# license for your plugin.
+license = { text = "Apache-2.0" }
+dependencies = [
+    "osprey-core>=0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.24",
+    "respx>=0.22",
+]
+
+# This is the whole of registration. Osprey imports every module listed in this
+# group at startup; the @registry.register decorator inside does the rest.
+[project.entry-points."osprey.connectors"]
+exampletracker = "osprey_connector_example"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["osprey_connector_example*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

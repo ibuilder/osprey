@@ -76,7 +76,10 @@ def normalize_gmail_message(msg: dict) -> RawEvent:
 class GmailConnector(Connector):
     source_type = "gmail"
     scopes = ["https://www.googleapis.com/auth/gmail.readonly"]
-    supports_webhooks = True
+    # Gmail push (Pub/Sub watch + History API) is not implemented; this connector
+    # polls. Declaring webhooks without a handle_webhook() made the Forward-To
+    # endpoint accept Gmail connections and then fail with NotImplementedError.
+    supports_webhooks = False
 
     def oauth_spec(self):
         from ...security.oauth import OAuthSpec

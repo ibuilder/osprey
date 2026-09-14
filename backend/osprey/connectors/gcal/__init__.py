@@ -55,7 +55,9 @@ def normalize_gcal_event(event: dict) -> RawEvent:
 class GoogleCalendarConnector(Connector):
     source_type = "gcal"
     scopes = ["https://www.googleapis.com/auth/calendar.readonly"]
-    supports_webhooks = True
+    # Calendar push channels (events.watch) are not implemented; this connector
+    # polls. See the same note on the Gmail connector.
+    supports_webhooks = False
 
     def oauth_spec(self):
         from ...security.oauth import OAuthSpec
