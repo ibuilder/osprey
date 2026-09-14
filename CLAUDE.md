@@ -59,7 +59,7 @@ Connectors are tested against recorded fixtures — never live production data.
 
 ## CI expectations (all blocking)
 ruff lint **and** `ruff format --check`, mypy, pytest with a coverage floor, on Python
-3.11/3.12/3.13; plus frontend (tsc+vite) and Rust (fmt/clippy/build) jobs. Run the four
+3.11/3.12/3.13/3.14; plus frontend (tsc+vite) and Rust (fmt/clippy/build) jobs. Run the four
 backend commands above before every commit.
 
 Dependencies are pinned in two files. `backend/constraints.txt` is the test set and
