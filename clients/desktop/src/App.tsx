@@ -322,6 +322,10 @@ export function HotlistView({ api, projectId }: { api: Api; projectId: string })
     const res = await fetch(api.exportUrl(projectId, fmt), {
       headers: { Authorization: `Bearer ${(api as any).session.token}` },
     });
+    if (!res.ok) {
+      window.alert(`Export failed (${res.status}). Try Refresh, then export again.`);
+      return;
+    }
     const blob = await res.blob();
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

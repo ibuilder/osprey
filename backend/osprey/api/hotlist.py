@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..engine.hotlist import refresh_project
 from ..exports import hotlist_to_pdf, hotlist_to_xlsx
+from ..exports.common import sanitize_export_filename
 from ..models import HotlistSnapshot, Project, Role
 from ..security import audit
 from ..security.auth import Principal
@@ -80,14 +81,15 @@ async def export_hotlist(
         meta={"format": format},
     )
 
+    prepared_by = snapshot.generated_by
     if format == "pdf":
-        data = hotlist_to_pdf(payload, project_name=project.name)
+        data = hotlist_to_pdf(payload, project_name=project.name, prepared_by=prepared_by)
         media, ext = "application/pdf", "pdf"
     else:
-        data = hotlist_to_xlsx(payload, project_name=project.name)
+        data = hotlist_to_xlsx(payload, project_name=project.name, prepared_by=prepared_by)
         media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         ext = "xlsx"
-    filename = f"osprey-hotlist-{project.name.replace(' ', '_')}.{ext}"
+    filename = sanitize_export_filename(project.name, ext)
     return Response(
         content=data,
         media_type=media,
