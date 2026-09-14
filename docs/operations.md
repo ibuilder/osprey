@@ -34,6 +34,16 @@ Advisories that log a warning but do **not** block a boot: RLS disabled, rate
 limiting disabled, no `OSPREY_PUBLIC_BASE_URL`, no retention window, unauthenticated
 `/metrics`. Read the startup log after every deploy — that is where they appear.
 
+### Verify the image you deploy
+
+Released images (v0.3.2 on) carry signed build provenance tying the image digest to
+the release workflow and commit that built it. Check it before rolling out, and pin
+the chart to the digest it reports rather than a tag, which can be moved:
+
+```bash
+gh attestation verify oci://ghcr.io/ibuilder/osprey:v0.3.2 --repo ibuilder/osprey
+```
+
 ### Tenant isolation
 
 Row-level security is off by default because it only works if you connect as an

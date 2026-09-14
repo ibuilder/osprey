@@ -97,7 +97,10 @@ Do **not** open a public issue for a security report.
 - SBOM (Syft) per release; vuln scanning (Trivy + Dependabot).
 - **Release integrity**: every release publishes `SHA256SUMS.txt` and signed build
   provenance (`actions/attest-build-provenance`, recorded in a public transparency
-  log and checkable with `gh attestation verify`). Update payloads are signed with
+  log and checkable with `gh attestation verify`). The container image carries the
+  same provenance, bound to its pushed digest and stored in the registry beside it
+  (`gh attestation verify oci://ghcr.io/ibuilder/osprey:<tag> --repo ibuilder/osprey`).
+  Update payloads are signed with
   a minisign key whose public half is compiled into the app, so an installed copy
   discards any update it cannot verify. **Binaries are not yet code-signed with an
   organisation certificate** — SmartScreen and Gatekeeper still warn on first run;

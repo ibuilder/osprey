@@ -70,7 +70,7 @@ cd backend && python -m osprey.seed
 | Data model (Org → User → Project → Connection → Signal → Item → Score → Action) | ✅ |
 | Connector framework (ABC + registry) · **connector SDK**: contract checks any plugin can run against itself, entry-point plugin discovery, and a tested [template](connectors-sdk/) | ✅ |
 | Universal **File-Drop / IMAP / Forward-To** fallback connector | ✅ |
-| Connectors: **Outlook · Gmail · Google Calendar · Procore** (OAuth2 + delta/webhook) · **Autodesk Construction Cloud** issues · **Sage Intacct** open receivables | ✅ |
+| Connectors: **Outlook · Gmail · Google Calendar · Procore** (OAuth2 + delta/webhook) · **Autodesk Construction Cloud** issues (with opt-in webhooks) · **Sage Intacct** open receivables and payables | ✅ |
 | **Argus Enterprise** export path: lease option notice deadlines (scored as contractual notices) and expirations from tenancy CSVs | ✅ |
 | **Desktop-app OAuth** — user authorizes each source in their own browser (loopback + PKCE), tokens sealed server-side, never via any AI/MCP layer | ✅ |
 | Engine: cluster → extract → **explainable score** → rank → hotlist | ✅ |
@@ -90,7 +90,7 @@ cd backend && python -m osprey.seed
 | Admin console (connection health · audit verify · tenant-isolation check · stats), with a **Health** view in the desktop app | ✅ |
 | **Tauri 2.0 desktop client** (tray · live hotlist · connect · AI · scripts · admin and account screens) with **OS notifications for new critical items**, close-to-tray, and start at login | ✅ |
 | **Mobile viewer** (iOS/Android) | scaffold only |
-| Tests: **425 backend** (~89% cov; connector poll-loops and the connector contract for every built-in, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation, push senders, AI providers) + **71 desktop tests** (incl. admin, account, health and alert behaviour) | ✅ |
+| Tests: **444 backend** (~89% cov; connector poll-loops and the connector contract for every built-in, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation, push senders, AI providers) + **74 desktop tests** (incl. admin, account, health, alert and connection opt-in behaviour) | ✅ |
 | docker-compose + **Helm chart** (api · worker · migrations · ingress · HPA · PDB · NetworkPolicy · ServiceMonitor) | ✅ |
 | CI (11 blocking checks): Python **3.11/3.12/3.13/3.14** · ruff lint+format · mypy · coverage gate · **connector SDK template installed as a plugin and tested** · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · actionlint · SBOM · pip-audit / npm-audit / Trivy | ✅ |
 
@@ -139,11 +139,19 @@ docker compose up         # api :8000, worker, postgres+pgvector, redis
 Adds the background worker (polling, scheduled scripts, subscription renewal),
 Postgres + pgvector, and Redis. This is what production looks like.
 
+Released images are published to `ghcr.io/ibuilder/osprey` (the Helm chart's
+default) with signed build provenance, from v0.3.2 on. Check an image before you
+deploy it:
+
+```bash
+gh attestation verify oci://ghcr.io/ibuilder/osprey:v0.3.2 --repo ibuilder/osprey
+```
+
 ### Then the desktop app
 
-Grab an installer from [Releases](https://github.com/ibuilder/osprey/releases) —
-Windows `.exe`/`.msi`, macOS `.dmg` (Apple silicon and Intel), and Linux
-`.deb`/`.rpm`/`.AppImage`.
+Grab an installer from the [download page](https://ibuilder.github.io/osprey/#download)
+(or [Releases](https://github.com/ibuilder/osprey/releases)) — Windows `.exe`/`.msi`,
+macOS `.dmg` (Apple silicon and Intel), and Linux `.deb`/`.rpm`/`.AppImage`.
 
 Nothing is code-signed yet, so the first launch takes an extra click: Windows
 SmartScreen needs *More info → Run anyway*, and macOS Gatekeeper needs
@@ -165,11 +173,9 @@ compiled into it and discards anything else. To build from source instead:
 cd clients/desktop && npm install && npm run tauri dev   # needs the Rust toolchain
 ```
 
-On the sign-in screen, point **Backend URL** at wherever you started the brain
-(`http://localhost:8000` by default), then create an account.
-
-> Windows installers are signed with the app's *updater* key, not an Authenticode
-> certificate, so SmartScreen will warn on first run until the project buys one.
+A source build has no bundled backend, so on the sign-in screen point **Backend URL**
+at wherever you started the brain (`http://localhost:8000` by default), then create
+an account.
 
 ## Design principles (the golden rules)
 

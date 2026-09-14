@@ -353,8 +353,10 @@ Worth stating plainly, since the pipeline is otherwise thorough:
   JavaScript; Sage's portal refuses automated reads). The ACC request and response
   shapes come from Autodesk's published API text, and Sage's from recorded
   production traffic in an open-source extractor. That is better than memory, but
-  the first live sandbox project for each is the real test. Neither handles
-  webhooks yet; both poll.
+  the first live sandbox project for each is the real test. Sage polls. ACC polls
+  too, and registers webhooks only when the user opts in to `data:write`; since the
+  callback body's layout is unverified, a signature-verified callback triggers a poll
+  rather than being parsed, so a wrong guess about its shape cannot lose an issue.
 - **Argus exports from a real Argus install.** Column matching is deliberately
   forgiving because layouts vary by template, but it has only seen the headings in
   its tests.
