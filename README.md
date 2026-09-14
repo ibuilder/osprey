@@ -68,9 +68,10 @@ cd backend && python -m osprey.seed
 |---|---|
 | Monorepo skeleton, config, DB layer, migrations baseline | ✅ |
 | Data model (Org → User → Project → Connection → Signal → Item → Score → Action) | ✅ |
-| Connector framework (ABC + registry) | ✅ |
+| Connector framework (ABC + registry) · **connector SDK**: contract checks any plugin can run against itself, entry-point plugin discovery, and a tested [template](connectors-sdk/) | ✅ |
 | Universal **File-Drop / IMAP / Forward-To** fallback connector | ✅ |
-| Connectors: **Outlook · Gmail · Google Calendar · Procore** (OAuth2 + delta/webhook) | ✅ |
+| Connectors: **Outlook · Gmail · Google Calendar · Procore** (OAuth2 + delta/webhook) · **Autodesk Construction Cloud** issues · **Sage Intacct** open receivables | ✅ |
+| **Argus Enterprise** export path: lease option notice deadlines (scored as contractual notices) and expirations from tenancy CSVs | ✅ |
 | **Desktop-app OAuth** — user authorizes each source in their own browser (loopback + PKCE), tokens sealed server-side, never via any AI/MCP layer | ✅ |
 | Engine: cluster → extract → **explainable score** → rank → hotlist | ✅ |
 | AI layer: pluggable (deterministic offline default · Claude · Ollama) | ✅ |
@@ -86,11 +87,12 @@ cd backend && python -m osprey.seed
 | REST + webhook + **WebSocket (live hotlist)** API (FastAPI) | ✅ |
 | Background workers (ARQ: poll · ingest · score · run-scripts · notify) | ✅ |
 | **Push**: device registration + APNs/FCM/Web-Push sender abstraction | ✅ |
-| Admin console (connection health · audit verify · stats · feature flags) | ✅ |
-| **Tauri 2.0 desktop client** (tray · live hotlist · connect · AI · scripts) + **mobile viewer** scaffold | ✅ |
-| Tests: **360 backend** (~89% cov; connector poll-loops, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation, push senders, AI providers) + **56 desktop tests** (incl. admin and account screens) | ✅ |
+| Admin console (connection health · audit verify · tenant-isolation check · stats), with a **Health** view in the desktop app | ✅ |
+| **Tauri 2.0 desktop client** (tray · live hotlist · connect · AI · scripts · admin and account screens) with **OS notifications for new critical items**, close-to-tray, and start at login | ✅ |
+| **Mobile viewer** (iOS/Android) | scaffold only |
+| Tests: **425 backend** (~89% cov; connector poll-loops and the connector contract for every built-in, Postgres **RLS isolation proven**, SSO against a locally-generated IdP, SCIM lifecycle, refresh-token reuse detection, worker failure isolation, push senders, AI providers) + **71 desktop tests** (incl. admin, account, health and alert behaviour) | ✅ |
 | docker-compose + **Helm chart** (api · worker · migrations · ingress · HPA · PDB · NetworkPolicy · ServiceMonitor) | ✅ |
-| CI (9 blocking jobs): Python **3.11/3.12/3.13/3.14** · ruff lint+format · mypy · coverage gate · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · SBOM · pip-audit / npm-audit / Trivy | ✅ |
+| CI (11 blocking checks): Python **3.11/3.12/3.13/3.14** · ruff lint+format · mypy · coverage gate · **connector SDK template installed as a plugin and tested** · **Postgres+pgvector** (migrations, drift, asyncpg suite) · frontend · **Rust** (fmt/clippy/build) · **Helm lint+render** · **live kind deploy smoke (RLS enforced end-to-end)** · actionlint · SBOM · pip-audit / npm-audit / Trivy | ✅ |
 
 ## Run it
 
