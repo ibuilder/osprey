@@ -27,6 +27,11 @@ demo/
 Thumbs.db
 .idea/
 .vscode/
+# Per-machine Claude Code config: launch.json holds absolute local paths and
+# settings.local.json is personal by definition. Shared settings would go in
+# .claude/settings.json, which stays trackable.
+.claude/settings.local.json
+.claude/launch.json
 
 # Node / clients
 node_modules/
