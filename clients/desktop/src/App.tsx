@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AccountView, AdminView } from "./Admin";
+import { criticalAlerts, loadAlerted, saveAlerted } from "./alerts";
 import { Api, canGrant, DEFAULT_BASE, Hotlist, Session } from "./api";
 
 type Tab = "hotlist" | "connections" | "ai" | "scripts" | "admin" | "account";
@@ -298,8 +299,21 @@ export function HotlistView({ api, projectId }: { api: Api; projectId: string })
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    api.hotlist(projectId, false).then(setHot).catch(() => {});
-    const ws = api.openHotlistSocket(projectId, setHot);
+    // Every snapshot, from the first load or the live socket, goes through the
+    // same check: a new critical item raises an OS notification, once.
+    let alerted = loadAlerted(projectId);
+    const receive = (h: Hotlist) => {
+      setHot(h);
+      const result = criticalAlerts(h, alerted);
+      alerted = result.alerted;
+      saveAlerted(projectId, alerted);
+      for (const alert of result.alerts) {
+        // Outside the desktop shell (a browser tab) there is nothing to notify.
+        invoke("notify_critical", { title: alert.title, body: alert.body }).catch(() => {});
+      }
+    };
+    api.hotlist(projectId, false).then(receive).catch(() => {});
+    const ws = api.openHotlistSocket(projectId, receive);
     wsRef.current = ws;
     return () => ws.close();
   }, [projectId]);

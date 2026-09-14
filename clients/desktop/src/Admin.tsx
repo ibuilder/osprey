@@ -5,6 +5,7 @@
 // mirrors those rules only so it does not offer buttons that are certain to fail,
 // and it always shows the server's own reason when something is refused.
 
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import {
   ActiveSession,
@@ -565,8 +566,62 @@ export function RetentionSection({ api, role }: { api: Api; role: string }) {
 export function AccountView({ api, onSignedOut }: { api: Api; onSignedOut: () => void }) {
   return (
     <div>
+      <DesktopSection />
       <SessionsSection api={api} onSignedOut={onSignedOut} />
       <PasswordSection api={api} onSignedOut={onSignedOut} />
+    </div>
+  );
+}
+
+/** Start-at-login. Only rendered inside the desktop shell, which owns the setting. */
+export function DesktopSection() {
+  const [available, setAvailable] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    invoke<boolean>("autostart_enabled")
+      .then((on) => {
+        setEnabled(Boolean(on));
+        setAvailable(true);
+      })
+      .catch(() => setAvailable(false)); // a browser tab: no such setting
+  }, []);
+
+  if (!available) return null;
+
+  async function toggle(next: boolean) {
+    setErr("");
+    setBusy(true);
+    try {
+      // Show what the OS reports afterwards, not what was asked for.
+      setEnabled(Boolean(await invoke<boolean>("set_autostart", { enabled: next })));
+    } catch (e) {
+      setErr(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <b>On this computer</b>
+      <label className="row" style={{ marginTop: 10, gap: 8 }}>
+        <input
+          type="checkbox"
+          style={{ width: "auto" }}
+          checked={enabled}
+          disabled={busy}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        <span>Start Osprey in the tray when I sign in</span>
+      </label>
+      <div className="muted" style={{ marginTop: 6 }}>
+        Osprey alerts you when an item needs action today. Closing the window keeps it running in
+        the tray so those alerts still arrive; choose Quit from the tray menu to stop it.
+      </div>
+      {err && <div className="notice">{err}</div>}
     </div>
   );
 }
