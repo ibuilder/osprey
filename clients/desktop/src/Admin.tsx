@@ -132,7 +132,17 @@ function OneTimeSecret({ title, secret, onDismiss }: { title: string; secret: st
 // --------------------------------------------------------------------------- //
 // Admin tab
 // --------------------------------------------------------------------------- //
-export function AdminView({ api, role, userId }: { api: Api; role: string; userId: string }) {
+export function AdminView({
+  api,
+  role,
+  userId,
+  onSignedOut,
+}: {
+  api: Api;
+  role: string;
+  userId: string;
+  onSignedOut: () => void;
+}) {
   const isOwner = role === "owner";
   return (
     <div>
@@ -141,6 +151,153 @@ export function AdminView({ api, role, userId }: { api: Api; role: string; userI
       <InvitesSection api={api} role={role} />
       {isOwner && <ScimSection api={api} />}
       <RetentionSection api={api} role={role} />
+      {isOwner && <DataSection api={api} onSignedOut={onSignedOut} />}
+    </div>
+  );
+}
+
+/**
+ * Save text to a file. Inside the desktop shell it lands in Downloads; in a plain
+ * browser (dev) it falls back to a download link. Returns where it went.
+ */
+export async function saveFile(filename: string, contents: string): Promise<string> {
+  try {
+    return await invoke<string>("save_export", { filename, contents });
+  } catch {
+    const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    return "your downloads";
+  }
+}
+
+/**
+ * Subject-access export and right to delete, for the owner. Deletion asks for the
+ * organization's exact name (the server checks it too) and then a second click,
+ * because nothing can bring the data back.
+ */
+export function DataSection({
+  api,
+  onSignedOut,
+  save = saveFile,
+}: {
+  api: Api;
+  onSignedOut: () => void;
+  save?: (filename: string, contents: string) => Promise<string>;
+}) {
+  const [orgName, setOrgName] = useState("");
+  const [typed, setTyped] = useState("");
+  const [queuedAt, setQueuedAt] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    api.orgSettings().then(
+      (s) => setOrgName(s.org_name),
+      (e) => setErr(errText(e)),
+    );
+  }, []);
+
+  async function exportAll() {
+    setErr("");
+    setMsg("");
+    setBusy(true);
+    try {
+      const data = await api.exportOrg();
+      const day = new Date().toISOString().slice(0, 10);
+      const where = await save(`osprey-export-${day}.json`, JSON.stringify(data, null, 2));
+      setMsg(`Export saved to ${where}.`);
+    } catch (e) {
+      setErr(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function erase() {
+    setErr("");
+    setMsg("");
+    try {
+      const result = await api.deleteOrg(typed.trim());
+      if (result.completed) {
+        onSignedOut();
+      } else {
+        setQueuedAt(result.requested_at ?? new Date().toISOString());
+      }
+    } catch (e) {
+      setErr(errText(e));
+    }
+  }
+
+  async function checkProgress() {
+    setErr("");
+    try {
+      const status = await api.deletionStatus();
+      if (status.completed) onSignedOut();
+      else setMsg("Still deleting. Check again in a minute.");
+    } catch {
+      // The account went with the organization, so the server no longer knows us.
+      onSignedOut();
+    }
+  }
+
+  const matches = orgName !== "" && typed.trim() === orgName;
+
+  return (
+    <div className="card">
+      <b>Data and deletion</b>
+      <div className="muted">
+        Download everything this organization holds, as JSON. Connected-account tokens are left
+        out: they stay sealed on the server.
+      </div>
+      <div className="row" style={{ marginTop: 10 }}>
+        <div className="spacer" />
+        <button disabled={busy} onClick={exportAll}>
+          {busy ? "Exporting…" : "Export all data"}
+        </button>
+      </div>
+
+      <div className="danger-zone">
+        <b>Delete this organization</b>
+        {queuedAt ? (
+          <>
+            <div className="muted">
+              Deletion started {when(queuedAt)}. This organization is large, so it is being removed in
+              the background; everyone is locked out meanwhile.
+            </div>
+            <div className="row" style={{ marginTop: 8 }}>
+              <div className="spacer" />
+              <button onClick={checkProgress}>Check progress</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="muted">
+              Permanently removes every project, source, item, member and the audit log. Members who
+              belong to no other organization lose their accounts. There is no undo: export first.
+            </div>
+            <label className="muted" style={{ display: "block", marginTop: 8 }}>
+              Type <b>{orgName || "the organization name"}</b> to confirm
+              <input value={typed} onChange={(e) => setTyped(e.target.value)} />
+            </label>
+            <div className="row" style={{ marginTop: 8 }}>
+              <div className="spacer" />
+              <ConfirmButton
+                label="Delete organization"
+                confirmLabel="Delete it permanently"
+                disabled={!matches}
+                onConfirm={erase}
+              />
+            </div>
+          </>
+        )}
+      </div>
+      {err && <div className="notice">{err}</div>}
+      {msg && <div className="muted">{msg}</div>}
     </div>
   );
 }

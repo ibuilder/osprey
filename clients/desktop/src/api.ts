@@ -159,6 +159,14 @@ export interface PurgePreview {
   cutoff_item: string | null;
 }
 
+export interface DeletionStatus {
+  org_id: string;
+  requested_at: string | null;
+  /** true once the org is gone; false while a queued erasure drains. */
+  completed: boolean;
+  deleted_rows?: Record<string, number>;
+}
+
 export interface ActiveSession {
   id: string;
   created_at: string;
@@ -412,6 +420,16 @@ export class Api {
   retentionPreview = () => this.req<PurgePreview>("/orgs/current/retention/preview");
   runRetention = () =>
     this.req<Record<string, number>>("/orgs/current/retention/run", { method: "POST" });
+  orgSettings = () => this.req<{ org_id: string; org_name: string }>("/orgs/current/settings");
+  /** Everything the tenant holds, as JSON (connector tokens excluded server-side). */
+  exportOrg = () => this.req<unknown>("/orgs/current/export");
+  /** Irreversible. The server refuses unless `confirmOrgName` matches exactly. */
+  deleteOrg = (confirmOrgName: string) =>
+    this.req<DeletionStatus>("/orgs/current/delete", {
+      method: "POST",
+      body: JSON.stringify({ confirm_org_name: confirmOrgName }),
+    });
+  deletionStatus = () => this.req<DeletionStatus>("/orgs/current/deletion-status");
 
   // The caller's own sessions.
   sessions = () => this.req<ActiveSession[]>("/auth/sessions");
