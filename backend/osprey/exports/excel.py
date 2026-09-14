@@ -16,9 +16,11 @@ from .common import (
     BUCKET_LABEL,
     BUCKET_ORDER,
     critical_items,
+    first_source,
     format_money,
     is_overdue,
     parse_due_date,
+    score_number,
     score_parts,
     source_label,
 )
@@ -153,11 +155,11 @@ def hotlist_to_xlsx(
             ws.cell(row=row, column=2, value=item.get("owner") or "")
             _due_cell(ws.cell(row=row, column=3), item.get("due"), as_of=as_of)
             _money_cell(ws.cell(row=row, column=4), item.get("dollar_exposure"))
-            ws.cell(row=row, column=5, value=item.get("recommended_action", ""))
-            for c in range(1, 6):
-                ws.cell(row=row, column=c).border = _BORDER
-                ws.cell(row=row, column=c).alignment = Alignment(
-                    vertical="top", wrap_text=c in (1, 5)
+            ws.cell(row=row, column=5, value=item.get("recommended_action") or "")
+            for c_idx in range(1, 6):
+                ws.cell(row=row, column=c_idx).border = _BORDER
+                ws.cell(row=row, column=c_idx).alignment = Alignment(
+                    vertical="top", wrap_text=c_idx in (1, 5)
                 )
 
     for col, width in {"A": 42, "B": 16, "C": 14, "D": 14, "E": 46}.items():
@@ -202,8 +204,8 @@ def hotlist_to_xlsx(
             item.get("owner") or "",
             None,  # Due filled as a real date below
             None,  # $ Exposure filled below so 0 ≠ blank
-            item.get("recommended_action", ""),
-            item.get("score", 0),
+            item.get("recommended_action") or "",
+            score_number(item.get("score")),
             urgency,
             impact,
             confidence,
@@ -222,10 +224,10 @@ def hotlist_to_xlsx(
         if item.get("notice_deadline"):
             ncell = hs.cell(row=r, column=3)
             ncell.font = Font(bold=True, color=PRIO_RED)
-        sources = item.get("sources") or []
+        first = first_source(item.get("sources"))
         src_cell = hs.cell(row=r, column=15)
-        if sources and sources[0].get("url"):
-            src_cell.hyperlink = sources[0]["url"]
+        if first and first.get("url"):
+            src_cell.hyperlink = first["url"]
             src_cell.font = Font(color=EMBER, underline="single")
     if items:
         last = len(items) + 1

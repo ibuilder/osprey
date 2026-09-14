@@ -227,3 +227,46 @@ def test_exports_agree_on_item_count_and_money():
     assert hotlist_to_pdf(PAYLOAD, project_name="P")[:5] == b"%PDF-"
     assert format_money(PAYLOAD["items"][1]["dollar_exposure"]) == "$0"
     assert format_money(PAYLOAD["items"][2]["dollar_exposure"]) == "—"
+
+
+def test_corrupt_sources_and_scores_do_not_crash_exports():
+    """Malformed snapshot fields must not take down Excel/PDF generation."""
+    payload = {
+        "generated_at": "2026-07-23T00:00:00+00:00",
+        "item_count": 1,
+        "total_exposure": "not-a-number",
+        "buckets": {
+            "watch": {"count": 1, "exposure": 0},
+            "act_today": {"count": 0, "exposure": 0},
+            "this_week": {"count": 0, "exposure": 0},
+            "done": {"count": 0, "exposure": 0},
+        },
+        "items": [
+            {
+                "item_id": "bad",
+                "what": "Broken payload",
+                "category": "other",
+                "bucket": "watch",
+                "bucket_label": "Watch",
+                "why": "why",
+                "sources": [
+                    None,
+                    "skip",
+                    {"source_type": "email", "title": "ok", "url": "https://x"},
+                ],
+                "owner": 123,
+                "due": "not-a-date",
+                "dollar_exposure": "abc",
+                "recommended_action": None,
+                "notice_deadline": False,
+                "score": "high",
+                "factors": {"urgency": "high", "impact": None},
+            }
+        ],
+    }
+    assert hotlist_to_pdf(payload, project_name="A & B")[:5] == b"%PDF-"
+    data = hotlist_to_xlsx(payload, project_name="A & B")
+    wb = load_workbook(io.BytesIO(data))
+    assert wb["Hotlist"].cell(row=2, column=11).value == 0  # corrupt score → 0
+    assert wb["Hotlist"].cell(row=2, column=15).value == "email: ok"
+    assert wb["Hotlist"].cell(row=2, column=15).hyperlink.target == "https://x"

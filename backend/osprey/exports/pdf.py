@@ -27,6 +27,7 @@ from .common import (
     esc_xml,
     format_due,
     format_money,
+    format_score,
     is_overdue,
     items_by_bucket,
     score_breakdown_text,
@@ -138,8 +139,8 @@ def _section_table(
                 Paragraph(esc_xml(item.get("owner") or "—"), st["cellsm"]),
                 _due_cell(item, st, as_of=as_of),
                 Paragraph(format_money(item.get("dollar_exposure")), st["cellsm"]),
-                Paragraph(esc_xml(item.get("recommended_action", "")), st["cellsm"]),
-                Paragraph(f"{float(item.get('score', 0) or 0):.0f}", st["cell"]),
+                Paragraph(esc_xml(item.get("recommended_action") or ""), st["cellsm"]),
+                Paragraph(format_score(item.get("score")), st["cell"]),
             ]
         )
         rank += 1
