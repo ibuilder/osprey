@@ -82,8 +82,8 @@ have to guess.
 ### Optional: webhooks (near-instant updates)
 
 By default Osprey polls ACC every cycle. To get new and updated issues within
-seconds instead, tick **Allow Osprey to register ACC webhooks (data:write)** before
-pressing Connect. Autodesk requires the `data:write` scope to create a webhook, so this
+seconds instead, tick **Also grant data:write** under the ACC source (the reason is
+shown beside it) before pressing Connect. Autodesk requires the `data:write` scope to create a webhook, so this
 is an explicit opt-in:
 
 - Osprey uses `data:write` only to register its webhooks and their signing secret. It
