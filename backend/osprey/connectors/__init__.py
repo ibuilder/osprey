@@ -25,6 +25,7 @@ from . import (  # noqa: F401
     internal,
     outlook,
     procore,
+    sage_intacct,
 )
 from .base import Connection, Connector, Health, NormalizedSignal, RawEvent, registry
 

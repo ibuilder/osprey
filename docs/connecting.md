@@ -79,6 +79,27 @@ closed and void issues are skipped. It polls: ACC webhooks are not wired up yet.
 issue's assignee is an Autodesk user id, so hotlist items show the issue's title and
 description rather than a name Osprey would have to guess.
 
+## Sage Intacct (open receivables)
+
+Osprey reads **Accounts Receivable invoices that still have money due** through the
+Sage Intacct REST API, and ranks them by due date and outstanding amount. Paid
+invoices are skipped. Nothing is ever written back.
+
+1. Register a Sage Intacct REST API client for your company (Sage's developer
+   documentation covers where your edition keeps this), and give it a **read-only**
+   role covering Accounts Receivable. Note the client id and secret.
+2. Create the connection with those credentials. They are sealed at rest
+   immediately, like every connection token:
+   ```
+   POST /connections
+   {"project_id": "...", "source_type": "sage-intacct",
+    "tokens": {"client_id": "...", "client_secret": "...", "entity": "optional-entity-id"}}
+   ```
+   `entity` is only needed for a multi-entity company, to choose whose books to read.
+
+Osprey exchanges the credentials for a token on each poll (`client_credentials`),
+so there is no browser consent step for this source. AP bills are not read yet.
+
 ## File-Drop / Forward-To (no OAuth)
 
 For any source without an API, forward email to Osprey or drop a CSV export — it
