@@ -493,11 +493,23 @@ export function ItemModal({ api, itemId, onClose, onAct }: { api: Api; itemId: s
   );
 }
 
-function ConnectionsView({ api, projectId }: { api: Api; projectId: string }) {
+export function ConnectionsView({ api, projectId }: { api: Api; projectId: string }) {
   const [sources, setSources] = useState<any[]>([]);
   const [conns, setConns] = useState<any[]>([]);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  // Per source, the optional scopes the admin has chosen to grant. Nothing is opted
+  // into by default: anything beyond read access has to be a deliberate choice.
+  const [optIns, setOptIns] = useState<Record<string, string[]>>({});
+
+  function toggleOptIn(sourceType: string, scope: string, on: boolean) {
+    setOptIns((prev) => {
+      const current = new Set(prev[sourceType] ?? []);
+      if (on) current.add(scope);
+      else current.delete(scope);
+      return { ...prev, [sourceType]: [...current] };
+    });
+  }
 
   const reload = () => api.connections(projectId).then(setConns);
   useEffect(() => {
@@ -510,7 +522,11 @@ function ConnectionsView({ api, projectId }: { api: Api; projectId: string }) {
     setBusy(sourceType);
     try {
       // Rust shell opens the system browser + loopback; backend seals the tokens.
-      await invoke("oauth_connect", { sourceType, projectId });
+      await invoke("oauth_connect", {
+        sourceType,
+        projectId,
+        optionalScopes: optIns[sourceType] ?? [],
+      });
       await reload();
     } catch (e) {
       setErr(String(e));
@@ -526,16 +542,31 @@ function ConnectionsView({ api, projectId }: { api: Api; projectId: string }) {
         <div className="muted">You authorize each source in your own browser. Tokens are sealed on the server — never stored in this app.</div>
         <div className="grid2" style={{ marginTop: 10 }}>
           {sources.filter((s) => s.auth === "oauth").map((s) => (
-            <div key={s.source_type} className="row">
-              <span>{s.source_type}</span>
-              <div className="spacer" />
-              <button
-                className="primary"
-                disabled={!s.configured || busy === s.source_type}
-                onClick={() => connect(s.source_type)}
-              >
-                {busy === s.source_type ? "Connecting…" : s.configured ? "Connect" : "Not configured"}
-              </button>
+            <div key={s.source_type}>
+              <div className="row">
+                <span>{s.source_type}</span>
+                <div className="spacer" />
+                <button
+                  className="primary"
+                  disabled={!s.configured || busy === s.source_type}
+                  onClick={() => connect(s.source_type)}
+                >
+                  {busy === s.source_type ? "Connecting…" : s.configured ? "Connect" : "Not configured"}
+                </button>
+              </div>
+              {Object.entries((s.optional_scopes ?? {}) as Record<string, string>).map(([scope, reason]) => (
+                <label key={scope} className="opt-in">
+                  <input
+                    type="checkbox"
+                    checked={(optIns[s.source_type] ?? []).includes(scope)}
+                    onChange={(e) => toggleOptIn(s.source_type, scope, e.target.checked)}
+                  />
+                  <span>
+                    Also grant <span className="mono">{scope}</span>
+                    <span className="muted"> — {reason}</span>
+                  </span>
+                </label>
+              ))}
             </div>
           ))}
         </div>

@@ -42,6 +42,8 @@ class AuthorizeRequest(BaseModel):
     source_type: str
     redirect_uri: str  # desktop loopback, e.g. http://127.0.0.1:53682/callback
     account_ref: str = ""
+    #: Optional scopes the admin opted into; each must be one the connector offers.
+    optional_scopes: list[str] = []
 
 
 class AuthorizeChallenge(BaseModel):
@@ -124,14 +126,16 @@ def build_authorize_url(
     redirect_uri: str,
     state: str,
     code_challenge: str | None,
+    extra_scopes: list[str] | None = None,
 ) -> str:
     from urllib.parse import urlencode
 
+    scopes = [*spec.scopes, *(s for s in (extra_scopes or []) if s not in spec.scopes)]
     params = {
         "client_id": client_id,
         "response_type": "code",
         "redirect_uri": redirect_uri,
-        "scope": " ".join(spec.scopes),
+        "scope": " ".join(scopes),
         "state": state,
         **spec.extra_authorize_params,
     }

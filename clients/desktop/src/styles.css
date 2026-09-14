@@ -101,6 +101,8 @@ button.danger { background: var(--prio-red); border-color: var(--prio-red); colo
 .secret { margin-top: 10px; padding: 12px; border: 1px solid var(--ember); border-radius: 10px; background: #fff7f2; }
 .secret-value { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; padding: 6px 8px; background: var(--white); border: 1px solid var(--line); border-radius: 6px; }
 label.muted input { margin-top: 4px; }
+.opt-in { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 4px; font-size: 13px; }
+.opt-in input { width: auto; margin-top: 2px; }
 
 /* Admin health console */
 .health-checks { display: grid; gap: 6px; margin-top: 10px; }

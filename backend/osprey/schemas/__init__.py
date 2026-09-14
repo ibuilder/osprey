@@ -143,6 +143,8 @@ class SourceInfo(BaseModel):
     source_type: str
     auth: str  # "oauth" | "forward" | "internal"
     scopes: list[str] = []
+    #: Scope -> why it would be requested. Granted only if the admin opts in.
+    optional_scopes: dict[str, str] = {}
     configured: bool = True  # OAuth app credentials present on server
 
 

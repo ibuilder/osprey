@@ -75,9 +75,29 @@ the *application's* identity, not any user's — set once by an admin.
    project id** (with or without the `b.` prefix).
 
 Osprey reads the project's issues with the read-only `data:read` scope. Drafts,
-closed and void issues are skipped. It polls: ACC webhooks are not wired up yet. An
-issue's assignee is an Autodesk user id, so hotlist items show the issue's title and
-description rather than a name Osprey would have to guess.
+closed and void issues are skipped. An issue's assignee is an Autodesk user id, so
+hotlist items show the issue's title and description rather than a name Osprey would
+have to guess.
+
+### Optional: webhooks (near-instant updates)
+
+By default Osprey polls ACC every cycle. To get new and updated issues within
+seconds instead, tick **Also grant data:write** under the ACC source (the reason is
+shown beside it) before pressing Connect. Autodesk requires the `data:write` scope to create a webhook, so this
+is an explicit opt-in:
+
+- Osprey uses `data:write` only to register its webhooks and their signing secret. It
+  never edits project data.
+- The person connecting must be a **Project Admin** on the ACC project, or Autodesk
+  refuses to create the hooks.
+- `OSPREY_PUBLIC_BASE_URL` must be reachable from the internet, because Autodesk calls it.
+
+Once connected, the hourly renewal job registers a signing secret and hooks for
+`issue.created-1.0` and `issue.updated-1.0`, and re-creates them if they disappear.
+Every callback is verified against its `x-adsk-signature` before it does anything, and
+a verified callback triggers a poll of the project. Polling continues as a safety net
+either way. Without the opt-in, Osprey never requests `data:write` and never creates
+a webhook.
 
 ## Sage Intacct (open receivables)
 

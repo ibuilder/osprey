@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from collections.abc import Mapping
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,14 +31,25 @@ def _valid_signature(raw: bytes, signature: str) -> bool:
 
 
 def _authenticate(
-    connector: Connector, connection: Connection, raw: bytes, payload: dict, signature: str
+    connector: Connector,
+    connection: Connection,
+    raw: bytes,
+    payload: dict,
+    signature: str,
+    headers: Mapping[str, str] | None = None,
 ) -> bool:
     """Verify a callback using whichever scheme the source actually supports.
 
     Providers that sign nothing (Microsoft Graph) authenticate with the
-    clientState secret Osprey handed them at subscribe time; everything else
-    uses Osprey's own HMAC.
+    clientState secret Osprey handed them at subscribe time. Providers that sign
+    the body with a secret Osprey registered (Autodesk) are verified by the
+    connector against that secret. Everything else uses Osprey's own HMAC.
     """
+    if connector.webhook_auth == "signature":
+        secret = to_view(connection).tokens.get("webhook_secret", "")
+        # No registered secret means no subscription was ever made for this
+        # connection: nothing legitimate can be calling, so refuse.
+        return bool(secret) and connector.verify_webhook_signature(raw, headers or {}, secret)
     if connector.webhook_auth != "client_state":
         return _valid_signature(raw, signature)
 
@@ -77,7 +89,12 @@ async def receive_webhook(
     connector = get_connector(source_type)
 
     if not _authenticate(
-        connector, connection, raw, payload, request.headers.get("X-Osprey-Signature", "")
+        connector,
+        connection,
+        raw,
+        payload,
+        request.headers.get("X-Osprey-Signature", ""),
+        request.headers,
     ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "webhook failed authentication")
 

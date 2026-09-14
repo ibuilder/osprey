@@ -254,6 +254,32 @@ async def test_oauth_must_be_https_with_pkce():
     assert any("PKCE" in v for v in violations)
 
 
+async def test_signature_auth_needs_a_verifier():
+    class Unverified(_Good):
+        webhook_auth = "signature"
+
+    assert any("verify_webhook_signature" in v for v in await _violations(Unverified))
+
+
+async def test_a_write_scope_is_allowed_only_as_an_explained_opt_in():
+    class OptIn(_Good):
+        scopes = ["data:read"]
+        optional_scopes = {"data:write": "Registers webhooks so changes arrive in seconds."}
+
+    class Unexplained(_Good):
+        optional_scopes = {"data:write": "webhooks"}
+
+    class Both(_Good):
+        scopes = ["data:read", "data:write"]
+        optional_scopes = {"data:write": "Registers webhooks so changes arrive in seconds."}
+
+    assert await _violations(OptIn) == []
+    assert any("plain-language reason" in v for v in await _violations(Unexplained))
+    violations = await _violations(Both)
+    assert any("both scopes and optional_scopes" in v for v in violations)
+    assert any("grants more than read access" in v for v in violations)
+
+
 async def test_an_unregistered_connector_is_reported():
     assert any("not registered" in v for v in await _violations(_Good, require_registered=True))
 
