@@ -58,7 +58,7 @@ python-dotenv==1.2.3
 python-multipart==0.0.32
 reportlab==5.0.1
 respx==0.23.1
-ruff==0.16.6
+ruff==0.16.7
 sqlmodel==0.0.42
 starlette==1.6.0
 tenacity==9.1.4
