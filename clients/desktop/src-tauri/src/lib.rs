@@ -11,9 +11,14 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, State,
 };
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_notification::NotificationExt;
+
+/// Passed by the login item: start in the tray rather than opening a window.
+const BACKGROUND_ARG: &str = "--background";
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -166,6 +171,49 @@ async fn wait_until_healthy(url: &str) -> bool {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
     false
+}
+
+/// Raise an OS notification for a critical hotlist item.
+///
+/// The frontend decides *what* is new (it holds the hotlist and remembers what it
+/// has already alerted on); the shell only delivers. Driving the plugin from Rust
+/// keeps the webview from needing the notification plugin's own JS permissions.
+#[tauri::command]
+fn notify_critical(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|e| e.to_string())
+}
+
+/// Whether Osprey starts (in the tray) when the user signs in to the computer.
+#[tauri::command]
+fn autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+/// Turn start-at-login on or off. Returns the state the OS actually reports, so the
+/// UI never shows a toggle the OS did not honour.
+#[tauri::command]
+fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    let launcher = app.autolaunch();
+    let changed = if enabled {
+        launcher.enable()
+    } else {
+        launcher.disable()
+    };
+    changed.map_err(|e| e.to_string())?;
+    launcher.is_enabled().map_err(|e| e.to_string())
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
 }
 
 #[derive(Deserialize)]
@@ -385,9 +433,30 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![BACKGROUND_ARG]),
+        ))
         .manage(Session::default())
         .manage(Sidecar::default())
+        // Closing the window hides it; Osprey keeps watching from the tray. An agent
+        // that stops when its window closes is not "always on", and the critical-
+        // item alerts it exists to deliver would silently stop. Quit is in the tray.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
+            // Launched at login: stay in the tray until the user asks for the window.
+            if std::env::args().any(|arg| arg == BACKGROUND_ARG) {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.hide();
+                }
+            }
+
             // Start the bundled backend, then record its URL once it answers so the
             // frontend can pick it up. Non-fatal: without it the app is a viewer.
             match spawn_backend(app.handle()) {
@@ -418,14 +487,19 @@ pub fn run() {
             TrayIconBuilder::with_id("osprey-tray")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
-                    }
+                    "show" => show_main_window(app),
                     "quit" => app.exit(0),
                     _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
                 })
                 .build(app)?;
             Ok(())
@@ -434,7 +508,10 @@ pub fn run() {
             set_session,
             oauth_connect,
             sso_login,
-            backend_status
+            backend_status,
+            notify_critical,
+            autostart_enabled,
+            set_autostart
         ])
         .build(tauri::generate_context!())
         .expect("error while running Osprey")
