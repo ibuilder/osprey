@@ -17,6 +17,7 @@ from importlib.metadata import entry_points
 
 # Import side effect: each module registers its connector(s) on the registry.
 from . import (  # noqa: F401
+    argus,
     filedrop,
     gcal,
     gmail,
