@@ -1,0 +1,13 @@
+{
+  "id": 1042,
+  "type": "rfi",
+  "title": "RFI 118: beam penetration at grid C-4",
+  "description": "Please confirm the penetration detail. This blocks MEP rough-in on level 3.",
+  "status": "open",
+  "assignee": "structural@ae.example.com",
+  "reporter": "pm@gc.example.com",
+  "due_date": "2026-09-20",
+  "cost_impact": "$18,500",
+  "url": "https://tracker.example.com/issues/1042",
+  "updated_at": "2026-09-12T15:30:00Z"
+}

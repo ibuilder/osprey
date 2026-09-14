@@ -182,8 +182,22 @@ class _Registry:
         self._by_type: dict[str, type[Connector]] = {}
 
     def register(self, cls: type[Connector]) -> type[Connector]:
+        existing = self._by_type.get(cls.source_type)
+        if existing is not None and existing is not cls:
+            # Refuse rather than overwrite. With plugins loaded from installed
+            # packages, a silent overwrite would let any package replace a built-in
+            # connector -- and receive that source's sealed tokens -- by reusing its
+            # name, with nothing in the logs to say it happened.
+            raise ValueError(
+                f"source_type {cls.source_type!r} is already registered to "
+                f"{existing.__module__}.{existing.__qualname__}"
+            )
         self._by_type[cls.source_type] = cls
         return cls
+
+    def unregister(self, source_type: str) -> None:
+        """Remove a connector. For tests that register throwaway connectors."""
+        self._by_type.pop(source_type, None)
 
     def get(self, source_type: str) -> Connector:
         try:

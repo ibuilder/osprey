@@ -55,6 +55,15 @@ jobs:
         # baseline with a couple of points of headroom.
         run: pytest -q --cov=osprey --cov-report=term-missing --cov-report=xml --cov-fail-under=82
 
+      # The SDK template is what an outside developer copies. Install it the way
+      # they would -- as a package, found through its entry point -- and run its
+      # own suite, so a core change that breaks plugin authors fails here.
+      - name: Connector SDK template works as an installed plugin
+        run: |
+          pip install --no-deps -e ../connectors-sdk/template
+          python -c "import osprey.connectors; from osprey.connectors.base import registry; assert 'exampletracker' in registry.types(), registry.types()"
+          pytest -q -p no:cacheprovider ../connectors-sdk/template/tests
+
       # The image runs 3.12 today. Before it can move, the production pins must
       # resolve on the newer interpreter too; this leg answers that on every PR, so
       # the image bump is a one-line change once it is green (see dependabot.yml).
