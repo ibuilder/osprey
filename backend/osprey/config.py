@@ -106,6 +106,12 @@ class Settings(BaseSettings):
     retention_item_days: int = 0
     retention_audit_days: int = 0  # audit is hash-chained; purging breaks the chain
     retention_snapshot_days: int = 0
+    # Tenant erasure runs inline, in one transaction, unless the tenant holds more
+    # than this many bulk rows (signals, items, scores, audit). Past it the request
+    # returns 202 and the worker drains the tenant in batches of
+    # erasure_batch_rows. 0 = always inline, which needs no worker.
+    erasure_inline_max_rows: int = 0
+    erasure_batch_rows: int = 5000
 
     # ---- Metrics -------------------------------------------------------------
     metrics_enabled: bool = True

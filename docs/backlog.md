@@ -321,11 +321,14 @@ against a determined adversary — it fails *open* when its backend is unreachab
 because a limiter that takes the API down with it has converted an availability
 control into an outage. Blocking belongs at the ingress or WAF.
 
-**Asynchronous tenant erasure.** `POST /orgs/current/delete` runs inline, in one
-transaction, so a failure rolls back cleanly and no worker is required (a
-self-hosted deployment may not run one). The `deletion_requested_at` flag and its
-423 response exist so that a tenant too large to erase inline has a state to sit
-in — the drain itself is not built.
+**~~Asynchronous tenant erasure~~ — built.** `POST /orgs/current/delete` still runs
+inline by default, in one transaction, so a failure rolls back cleanly and no worker
+is required. Setting `OSPREY_ERASURE_INLINE_MAX_ROWS` queues larger tenants: the
+request commits `deletion_requested_at` and returns 202, and the worker's
+`drain_erasures` job removes bounded batches (children before parents, a table left
+only once it is empty) until `erase_org` can finish the rest. While queued, the
+tenant is refused with 423 and skipped by polling, renewal, scheduled scripts and
+webhooks, so the drain is not racing new data in.
 
 **Audit log truncation is indistinguishable from tampering.** Retention can purge
 a contiguous *prefix* of the hash chain, which leaves the remainder verifiable.
