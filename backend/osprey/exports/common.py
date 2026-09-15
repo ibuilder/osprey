@@ -164,6 +164,36 @@ def items_by_bucket(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any
     return grouped
 
 
+def item_key(item: dict[str, Any]) -> Any:
+    """Stable identity for ranking: prefer ``item_id``, else object identity."""
+    key = item.get("item_id")
+    return key if key is not None else id(item)
+
+
+def global_ranks(items: list[dict[str, Any]]) -> dict[Any, int]:
+    """Snapshot-order ranks (1-based) — Excel and PDF must share this numbering."""
+    return {item_key(item): i for i, item in enumerate(items, start=1)}
+
+
+def export_row_identities(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Canonical per-item export identity for cross-format agreement tests."""
+    as_of = payload.get("generated_at")
+    rows: list[dict[str, Any]] = []
+    for i, item in enumerate(payload.get("items") or [], start=1):
+        rows.append(
+            {
+                "rank": i,
+                "item_id": item.get("item_id"),
+                "what": item.get("what"),
+                "bucket": item.get("bucket"),
+                "money": format_money(item.get("dollar_exposure")),
+                "score": format_score(item.get("score")),
+                "overdue": is_overdue(item.get("due"), as_of=as_of),
+            }
+        )
+    return rows
+
+
 def critical_items(items: list[dict[str, Any]], *, limit: int = 5) -> list[dict[str, Any]]:
     """Highest-impact open work: Act-today items first, capped for the Summary rollup."""
     act = [i for i in items if i.get("bucket") == "act_today"]

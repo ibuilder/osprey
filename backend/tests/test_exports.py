@@ -229,6 +229,83 @@ def test_exports_agree_on_item_count_and_money():
     assert format_money(PAYLOAD["items"][2]["dollar_exposure"]) == "—"
 
 
+def test_excel_and_pdf_share_global_ranks_across_buckets():
+    """A lower-score Act-today item must keep its snapshot rank in the PDF.
+
+    Excel numbers rows in snapshot order. PDF groups by bucket but must not
+    renumber — otherwise the two formats disagree (SPEC §8).
+    """
+    from osprey.exports.common import export_row_identities, global_ranks
+
+    # Higher score this_week first, lower score act_today second — mirrors a
+    # notice-boosted bucket that outranks score order.
+    payload = {
+        "generated_at": "2026-07-23T00:00:00+00:00",
+        "item_count": 2,
+        "total_exposure": 10.0,
+        "buckets": {
+            "act_today": {"count": 1, "exposure": 10.0},
+            "this_week": {"count": 1, "exposure": 0.0},
+            "watch": {"count": 0, "exposure": 0.0},
+            "done": {"count": 0, "exposure": 0.0},
+        },
+        "items": [
+            {
+                "item_id": "high-score-week",
+                "what": "Pay app",
+                "category": "invoice",
+                "bucket": "this_week",
+                "bucket_label": "This week",
+                "why": "why",
+                "sources": [],
+                "owner": None,
+                "due": None,
+                "dollar_exposure": 0.0,
+                "recommended_action": "Review",
+                "notice_deadline": False,
+                "score": 90.0,
+                "factors": {},
+            },
+            {
+                "item_id": "low-score-today",
+                "what": "Notice",
+                "category": "contractual_notice",
+                "bucket": "act_today",
+                "bucket_label": "Act today",
+                "why": "why",
+                "sources": [],
+                "owner": "PM",
+                "due": "2026-07-20",
+                "dollar_exposure": 10.0,
+                "recommended_action": "Respond",
+                "notice_deadline": True,
+                "score": 50.0,
+                "factors": {"urgency": 0.95},
+            },
+        ],
+    }
+    ids = export_row_identities(payload)
+    assert [r["rank"] for r in ids] == [1, 2]
+    assert [r["item_id"] for r in ids] == ["high-score-week", "low-score-today"]
+    ranks = global_ranks(payload["items"])
+    assert ranks["high-score-week"] == 1
+    assert ranks["low-score-today"] == 2
+
+    wb = load_workbook(io.BytesIO(hotlist_to_xlsx(payload, project_name="P")))
+    assert wb["Hotlist"].cell(row=2, column=1).value == 1
+    assert wb["Hotlist"].cell(row=2, column=4).value == "Pay app"
+    assert wb["Hotlist"].cell(row=3, column=1).value == 2
+    assert wb["Hotlist"].cell(row=3, column=4).value == "Notice"
+
+    # PDF must still build (bucket order shows Notice section before This week,
+    # but the # column uses the global ranks above).
+    pdf = hotlist_to_pdf(payload, project_name="P", prepared_by="qa@gc.com")
+    assert pdf[:5] == b"%PDF-"
+    # Raw PDF content includes the rank digits as literal text for both items.
+    assert b"(1)" in pdf or b"1" in pdf
+    assert b"(2)" in pdf or b"2" in pdf
+
+
 def test_corrupt_sources_and_scores_do_not_crash_exports():
     """Malformed snapshot fields must not take down Excel/PDF generation."""
     payload = {

@@ -28,7 +28,9 @@ from .common import (
     format_due,
     format_money,
     format_score,
+    global_ranks,
     is_overdue,
+    item_key,
     items_by_bucket,
     score_breakdown_text,
     source_label,
@@ -105,10 +107,10 @@ def _due_cell(item: dict[str, Any], st: dict[str, ParagraphStyle], *, as_of: Any
 def _section_table(
     items: list[dict[str, Any]],
     st: dict[str, ParagraphStyle],
-    start_rank: int,
+    ranks: dict[Any, int],
     *,
     as_of: Any,
-) -> tuple[Table, int]:
+) -> Table:
     header = [
         Paragraph("<b>#</b>", st["cell"]),
         Paragraph("<b>What / Why</b>", st["cell"]),
@@ -130,8 +132,9 @@ def _section_table(
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]
-    rank = start_rank
     for item in items:
+        # Use the snapshot-global rank so Excel and PDF agree on numbering.
+        rank = ranks.get(item_key(item), 0)
         data.append(
             [
                 Paragraph(str(rank), st["cell"]),
@@ -143,7 +146,6 @@ def _section_table(
                 Paragraph(format_score(item.get("score")), st["cell"]),
             ]
         )
-        rank += 1
 
     table = Table(
         data,
@@ -159,7 +161,7 @@ def _section_table(
         repeatRows=1,
     )
     table.setStyle(TableStyle(style_cmds))
-    return table, rank
+    return table
 
 
 def _page_chrome(canvas, doc) -> None:  # noqa: ANN001
@@ -206,10 +208,10 @@ def hotlist_to_pdf(
     prepared = esc_xml(prepared_by) if prepared_by else ""
     meta_bits = [
         f"Project: <b>{esc_xml(project_name)}</b>",
-        f"Prepared: {esc_xml(payload.get('generated_at', ''))}",
+        f"Generated: {esc_xml(payload.get('generated_at', ''))}",
     ]
     if prepared:
-        meta_bits.append(f"By: {prepared}")
+        meta_bits.append(f"Prepared by: {prepared}")
     meta_bits.extend(
         [
             f"Items: {payload.get('item_count', 0)}",
@@ -231,9 +233,9 @@ def hotlist_to_pdf(
             )
         )
     else:
+        ranks = global_ranks(items)
         grouped = items_by_bucket(items)
         buckets_meta = payload.get("buckets") or {}
-        rank = 1
         for bucket in BUCKET_ORDER:
             bucket_items = grouped.get(bucket) or []
             if not bucket_items:
@@ -264,7 +266,7 @@ def hotlist_to_pdf(
                     ]
                 )
             )
-            table, rank = _section_table(bucket_items, st, rank, as_of=as_of)
+            table = _section_table(bucket_items, st, ranks, as_of=as_of)
             flow.append(KeepTogether([banner, Spacer(1, 4), table, Spacer(1, 10)]))
 
     flow.append(HRFlowable(width="100%", thickness=0.6, color=LINE))

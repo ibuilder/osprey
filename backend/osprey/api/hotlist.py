@@ -81,7 +81,7 @@ async def export_hotlist(
         meta={"format": format},
     )
 
-    prepared_by = snapshot.generated_by
+    prepared_by = principal.email
     if format == "pdf":
         data = hotlist_to_pdf(payload, project_name=project.name, prepared_by=prepared_by)
         media, ext = "application/pdf", "pdf"

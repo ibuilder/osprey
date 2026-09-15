@@ -78,8 +78,27 @@ async def test_end_to_end_hotlist_and_exports(auth_client):
     xlsx = await client.get(f"/projects/{project_id}/hotlist/export", params={"format": "xlsx"})
     assert xlsx.status_code == 200
     assert xlsx.content[:2] == b"PK"
+    assert "attachment" in xlsx.headers.get("content-disposition", "")
+    assert "osprey-hotlist-" in xlsx.headers.get("content-disposition", "")
+    assert ".xlsx" in xlsx.headers.get("content-disposition", "")
+
     pdf = await client.get(f"/projects/{project_id}/hotlist/export", params={"format": "pdf"})
+    assert pdf.status_code == 200
     assert pdf.content[:5] == b"%PDF-"
+    assert "attachment" in pdf.headers.get("content-disposition", "")
+    assert ".pdf" in pdf.headers.get("content-disposition", "")
+
+    # Exporter is the signed-in user, not whoever last refreshed the snapshot.
+    import io
+
+    from openpyxl import load_workbook
+
+    wb = load_workbook(io.BytesIO(xlsx.content))
+    assert wb["Summary"]["B6"].value  # prepared-by populated
+    assert "@" in str(wb["Summary"]["B6"].value)
+
+    bad = await client.get(f"/projects/{project_id}/hotlist/export", params={"format": "docx"})
+    assert bad.status_code == 422
 
     # Action feedback loop.
     act = await client.post(f"/items/{item_id}/actions", json={"type": "escalate"})

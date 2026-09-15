@@ -2,7 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AccountView, AdminView } from "./Admin";
 import { criticalAlerts, loadAlerted, saveAlerted } from "./alerts";
-import { Api, canGrant, DEFAULT_BASE, Hotlist, Session } from "./api";
+import { Api, canGrant, DEFAULT_BASE, describeError, Hotlist, Session } from "./api";
+import { filenameFromContentDisposition } from "./exportDownload";
 
 type Tab = "hotlist" | "connections" | "ai" | "scripts" | "admin" | "account";
 
@@ -319,18 +320,24 @@ export function HotlistView({ api, projectId }: { api: Api; projectId: string })
   }, [projectId]);
 
   async function download(fmt: "xlsx" | "pdf") {
-    const res = await fetch(api.exportUrl(projectId, fmt), {
-      headers: { Authorization: `Bearer ${(api as any).session.token}` },
-    });
-    if (!res.ok) {
-      window.alert(`Export failed (${res.status}). Try Refresh, then export again.`);
-      return;
+    try {
+      const res = await fetch(api.exportUrl(projectId, fmt), {
+        headers: { Authorization: `Bearer ${(api as any).session.token}` },
+      });
+      if (!res.ok) {
+        window.alert(await describeError(res, `Export failed (${res.status}). Try Refresh, then export again.`));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filenameFromContentDisposition(res.headers.get("Content-Disposition"), `osprey-hotlist.${fmt}`);
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Export failed. Check your connection and try again.");
     }
-    const blob = await res.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `osprey-hotlist.${fmt}`;
-    a.click();
   }
 
   async function act(itemId: string, type: string) {
