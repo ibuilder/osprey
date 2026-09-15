@@ -91,6 +91,23 @@ def format_due(value: Any) -> str:
     return str(value).strip() or "—"
 
 
+def format_timestamp(value: Any) -> str:
+    """Display a generation timestamp compactly (``YYYY-MM-DD HH:MM`` when parseable)."""
+    if value is None or value == "":
+        return "—"
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return "—"
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return format_due(value)
+    return f"{dt.date().isoformat()} {dt.strftime('%H:%M')}"
+
+
 def is_overdue(due: Any, *, as_of: Any = None) -> bool:
     """True when the due date is strictly before the as-of (or today) date."""
     due_d = parse_due_date(due)

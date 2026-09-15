@@ -18,6 +18,7 @@ from .common import (
     critical_items,
     first_source,
     format_money,
+    format_timestamp,
     is_overdue,
     parse_due_date,
     score_number,
@@ -103,7 +104,7 @@ def hotlist_to_xlsx(
     ws["A4"] = "Project"
     ws["B4"] = project_name
     ws["A5"] = "Generated"
-    ws["B5"] = payload.get("generated_at", "")
+    ws["B5"] = format_timestamp(payload.get("generated_at", ""))
     ws["A6"] = "Prepared by"
     ws["B6"] = prepared_by or ""
     ws["A7"] = "Items"

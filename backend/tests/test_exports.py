@@ -100,6 +100,14 @@ def test_format_due_collapses_iso_datetimes():
     assert format_due("2026-09-20T00:00:00+00:00") == "2026-09-20"
 
 
+def test_format_timestamp_compacts_iso():
+    from osprey.exports.common import format_timestamp
+
+    assert format_timestamp(None) == "—"
+    assert format_timestamp("2026-07-23T00:00:00+00:00") == "2026-07-23 00:00"
+    assert format_timestamp("not-a-stamp") == "not-a-stamp"
+
+
 def test_is_overdue_against_as_of():
     assert is_overdue("2026-07-20", as_of="2026-07-23T00:00:00+00:00")
     assert not is_overdue("2026-08-01", as_of="2026-07-23")
