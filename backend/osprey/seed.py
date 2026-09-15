@@ -163,8 +163,8 @@ async def run_seed(*, db_path: str = "./osprey-demo.db", out_dir: str = "./demo"
     out.mkdir(parents=True, exist_ok=True)
     xlsx_path = out / "hotlist.xlsx"
     pdf_path = out / "hotlist.pdf"
-    xlsx_path.write_bytes(hotlist_to_xlsx(payload, project_name="Tower B"))
-    pdf_path.write_bytes(hotlist_to_pdf(payload, project_name="Tower B"))
+    xlsx_path.write_bytes(hotlist_to_xlsx(payload, project_name="Tower B", prepared_by="seed"))
+    pdf_path.write_bytes(hotlist_to_pdf(payload, project_name="Tower B", prepared_by="seed"))
 
     return {
         "signals": total,

@@ -379,7 +379,16 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      # kind occasionally fails to come up on the first try (localhost:8080 refused).
+      # One automatic retry clears most of that flake without masking real chart bugs.
       - uses: helm/kind-action@v1
+        id: kind
+        continue-on-error: true
+        with:
+          cluster_name: osprey-ci
+      - name: Retry kind cluster creation
+        if: steps.kind.outcome == 'failure'
+        uses: helm/kind-action@v1
         with:
           cluster_name: osprey-ci
 
