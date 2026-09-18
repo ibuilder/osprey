@@ -14,25 +14,25 @@
 # Then regenerate the production pins too, or CI will reject the pair:
 #   python backend/tools/regen_constraints.py
 
-PyJWT==2.13.0
+PyJWT==2.14.0
 PyYAML==6.0.3
 Pygments==2.21.0
-SQLAlchemy==2.0.52
+SQLAlchemy==2.0.53
 aiosqlite==0.22.1
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
-ast_serialize==0.11.1
+ast_serialize==0.11.2
 certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.5.1
 click==8.5.0
 colorama==0.4.6
-coverage==7.16.0
+coverage==7.16.1
 cryptography==50.0.1
 et_xmlfile==2.0.0
 fastapi==0.141.1
-greenlet==3.5.5
+greenlet==3.5.6
 h11==0.16.0
 httpcore==1.0.9
 httptools==0.8.0
@@ -66,6 +66,6 @@ types-pyasn1==0.6.0.20260724
 types-python-jose==3.5.0.20260408
 typing-inspection==0.4.4
 typing_extensions==4.16.0
-uvicorn==0.52.4
+uvicorn==0.53.0
 watchfiles==1.2.0
 websockets==17.1
